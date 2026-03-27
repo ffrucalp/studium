@@ -442,21 +442,106 @@ async function zonaLogin(body, env) {
   const { username, password } = body;
   if (!username || !password) return json({ error: "Faltan usuario o contraseña" }, 400, env);
   try {
-    const initResp = await fetch(`${ZONA_URL}/index.php`, { redirect: "manual" });
+    // Step 1: GET login.php with redirect to get session cookie
+    const initResp = await fetch(`${ZONA_URL}/login.php?redirect=%2Finicio.php`, { redirect: "manual" });
     let cookies = extractCookies(initResp);
-    const loginResp = await fetch(`${ZONA_URL}/index.php`, {
-      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "Cookie": cookies },
-      body: new URLSearchParams({ usuario: username, cla: password, m: "bG9naW4=" }), redirect: "manual",
+    if (initResp.status === 200) await initResp.text();
+    // Follow any initial redirects
+    let loc = initResp.headers.get("location");
+    if (loc) {
+      const r = await fetch(loc.startsWith("http") ? loc : `${ZONA_URL}/${loc.replace(/^\//, "")}`, {
+        headers: { "Cookie": cookies }, redirect: "manual"
+      });
+      cookies = mergeCookies(cookies, extractCookies(r));
+      if (r.status === 200) await r.text();
+    }
+
+    // Step 2: POST to login.php with redirect param and boton field
+    const browserHeaders = {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Cookie": cookies,
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+      "Referer": `${ZONA_URL}/login.php?redirect=%2Finicio.php`,
+      "Origin": ZONA_URL,
+    };
+    const loginResp = await fetch(`${ZONA_URL}/login.php?redirect=%2Finicio.php`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: new URLSearchParams({ usuario: username, cla: password, boton: "Ingresar" }),
+      redirect: "manual",
     });
     cookies = mergeCookies(cookies, extractCookies(loginResp));
-    const checkResp = await fetch(`${ZONA_URL}/index.php?m=${ZONA_PAGES.inicio}`, { headers: { "Cookie": cookies }, redirect: "manual" });
-    cookies = mergeCookies(cookies, extractCookies(checkResp));
-    const html = await checkResp.text();
-    if (!html.includes("selectCarrera") && !html.includes("Mis carreras")) {
-      return json({ error: "Credenciales inválidas o no se pudo acceder" }, 401, env);
+
+    // Step 3: Follow all redirects after login
+    let html = "";
+    loc = loginResp.headers.get("location");
+    let attempts = 0;
+    while (loc && attempts < 8) {
+      const redirectUrl = loc.startsWith("http") ? loc : `${ZONA_URL}/${loc.replace(/^\//, "")}`;
+      const redirectResp = await fetch(redirectUrl, { headers: { "Cookie": cookies }, redirect: "manual" });
+      cookies = mergeCookies(cookies, extractCookies(redirectResp));
+      loc = redirectResp.headers.get("location");
+      if (!loc) html = await redirectResp.text();
+      attempts++;
     }
-    return json({ session: cookies, student: parseStudentInfo(html) }, 200, env);
-  } catch (err) { return json({ error: "Error conectando a Zona", details: err.message }, 500, env); }
+    if (!html && loginResp.status === 200) html = await loginResp.text();
+
+    // Step 4: Check if we're on role selection page
+    if (html.includes("Elija el rol") || html.includes("indexElige") || html.includes("aW5kZXhFbGlnZQ==")) {
+      // Select Alumno role
+      const selectResp = await fetch(`${ZONA_URL}/index.php?m=aW5kZXhFbGlnZQ==`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "Cookie": cookies },
+        body: new URLSearchParams({ tipo: "A" }),
+        redirect: "manual",
+      });
+      cookies = mergeCookies(cookies, extractCookies(selectResp));
+
+      loc = selectResp.headers.get("location");
+      html = "";
+      let roleAttempts = 0;
+      while (loc && roleAttempts < 5) {
+        const r = await fetch(loc.startsWith("http") ? loc : `${ZONA_URL}/${loc.replace(/^\//, "")}`, {
+          headers: { "Cookie": cookies }, redirect: "manual",
+        });
+        cookies = mergeCookies(cookies, extractCookies(r));
+        loc = r.headers.get("location");
+        if (!loc) html = await r.text();
+        roleAttempts++;
+      }
+      if (!html) html = await selectResp.text();
+    }
+
+    // Step 5: Try fetching inicio if not on dashboard yet
+    if (!html.includes("selectCarrera") && !html.includes("Mis carreras") && !html.includes("Legajo")) {
+      const inicioResp = await fetch(`${ZONA_URL}/index.php?m=${ZONA_PAGES.inicio}`, {
+        headers: { "Cookie": cookies }, redirect: "manual",
+      });
+      cookies = mergeCookies(cookies, extractCookies(inicioResp));
+      loc = inicioResp.headers.get("location");
+      if (loc && loc.includes("login")) {
+        return json({ error: "Sesión no válida después del login", debug: { cookies: cookies.substring(0, 100) } }, 401, env);
+      }
+      if (!loc) html = await inicioResp.text();
+    }
+
+    // Success check
+    if (html.includes("selectCarrera") || html.includes("Mis carreras") || html.includes("Legajo")) {
+      return json({ session: cookies, student: parseStudentInfo(html) }, 200, env);
+    }
+
+    return json({
+      error: "No se pudo acceder a Zona Interactiva",
+      debug: {
+        
+        hasLoginForm: html.includes('name="usuario"'),
+        hasRoleSelect: html.includes("Elija el rol"),
+        bodyPreview: html.substring(0, 500),
+      }
+    }, 401, env);
+  } catch (err) {
+    return json({ error: "Error conectando a Zona", details: err.message }, 500, env);
+  }
 }
 
 async function zonaScrape(body, env) {
