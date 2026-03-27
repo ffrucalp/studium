@@ -7,6 +7,7 @@ import AuthCallback from "./pages/AuthCallback";
 import MoodleConnect from "./pages/MoodleConnect";
 import Dashboard from "./pages/Dashboard";
 import CourseDetail from "./pages/CourseDetail";
+import Career from "./pages/Career";
 import Chat from "./pages/Chat";
 import Planner from "./pages/Planner";
 import Quiz from "./pages/Quiz";
@@ -66,6 +67,7 @@ export default function App() {
             onNavigateChat={() => setScreen("chat")} onNavigateQuiz={navigateQuiz} />
         ) : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
       case "chat": return <Chat />;
+      case "career": return <Career />;
       case "planner": return <Planner />;
       case "quiz": return <Quiz initialCourse={quizCourse} />;
       case "settings": return <SettingsPage />;

@@ -3,11 +3,12 @@ import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
 import {
   Home, Sparkles, Calendar, HelpCircle, Settings,
-  GraduationCap, ChevronLeft, Menu,
+  GraduationCap, BookOpen, ChevronLeft, Menu,
 } from "lucide-react";
 
 const navItems = [
   { id: "dashboard", label: "Inicio", Icon: Home },
+  { id: "career", label: "Mi Carrera", Icon: BookOpen },
   { id: "chat", label: "Tutor IA", Icon: Sparkles },
   { id: "planner", label: "Planificador", Icon: Calendar },
   { id: "quiz", label: "Práctica", Icon: HelpCircle },

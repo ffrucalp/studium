@@ -79,6 +79,20 @@ export async function downloadFile(token, fileurl) {
   return data; // { content: base64, contentType, size }
 }
 
+/**
+ * Extract text from a Moodle file (PDF, HTML, text)
+ */
+export async function extractFileText(token, fileurl) {
+  const res = await fetch(`${API_BASE}/api/moodle/extract`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, fileurl }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data; // { text, contentType, size, chars }
+}
+
 // ─── Color assignment for courses ─────────────────────────────────
 const COURSE_COLORS = [
   "#2563eb", "#7c3aed", "#059669", "#d97706", "#0891b2",
