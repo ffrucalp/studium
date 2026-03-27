@@ -402,6 +402,132 @@ async function moodleFile(body, env) {
   return json({ content: btoa(binary), contentType, size: buf.byteLength }, 200, env);
 }
 
+/**
+ * Download a Moodle file and extract text content
+ */
+async function moodleExtract(body, env) {
+  const { token, fileurl } = body;
+  if (!token || !fileurl) return json({ error: "Faltan token o fileurl" }, 400, env);
+
+  const sep = fileurl.includes("?") ? "&" : "?";
+  const res = await fetch(`${fileurl}${sep}token=${token}`);
+  if (!res.ok) return json({ error: "No se pudo descargar" }, res.status, env);
+
+  const contentType = res.headers.get("content-type") || "";
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let text = "";
+
+  if (contentType.includes("pdf")) {
+    text = extractPDFText(bytes);
+  } else if (contentType.includes("text") || contentType.includes("html")) {
+    const decoder = new TextDecoder("utf-8");
+    let raw = decoder.decode(bytes);
+    // Strip HTML tags if HTML
+    if (contentType.includes("html")) {
+      raw = raw.replace(/<script[\s\S]*?<\/script>/gi, "")
+               .replace(/<style[\s\S]*?<\/style>/gi, "")
+               .replace(/<[^>]+>/g, " ")
+               .replace(/&nbsp;/g, " ")
+               .replace(/&amp;/g, "&")
+               .replace(/&lt;/g, "<")
+               .replace(/&gt;/g, ">")
+               .replace(/\s+/g, " ");
+    }
+    text = raw.trim();
+  } else {
+    // For other types (docx, pptx etc), try as text
+    try {
+      const decoder = new TextDecoder("utf-8", { fatal: false });
+      text = decoder.decode(bytes).replace(/[^\x20-\x7E\xC0-\xFF\n\r\t]/g, " ").replace(/\s+/g, " ").trim();
+    } catch {
+      text = "";
+    }
+  }
+
+  return json({
+    text: text.substring(0, 50000), // Cap at ~50k chars
+    contentType,
+    size: buf.byteLength,
+    chars: text.length,
+  }, 200, env);
+}
+
+/**
+ * Basic PDF text extraction - extracts text from PDF streams
+ */
+function extractPDFText(bytes) {
+  // Convert to string for regex processing
+  let raw = "";
+  for (let i = 0; i < bytes.length; i++) raw += String.fromCharCode(bytes[i]);
+
+  const textParts = [];
+
+  // Method 1: Find text between BT and ET operators (text blocks)
+  const btEtRegex = /BT\s*([\s\S]*?)\s*ET/g;
+  let match;
+  while ((match = btEtRegex.exec(raw)) !== null) {
+    const block = match[1];
+    // Extract text from Tj and TJ operators
+    // Tj: (text) Tj
+    const tjRegex = /\(([^)]*)\)\s*Tj/g;
+    let tm;
+    while ((tm = tjRegex.exec(block)) !== null) {
+      textParts.push(decodePDFString(tm[1]));
+    }
+    // TJ: [(text) number (text) ...] TJ
+    const tjArrayRegex = /\[([\s\S]*?)\]\s*TJ/g;
+    while ((tm = tjArrayRegex.exec(block)) !== null) {
+      const inner = tm[1];
+      const strRegex = /\(([^)]*)\)/g;
+      let sm;
+      while ((sm = strRegex.exec(inner)) !== null) {
+        textParts.push(decodePDFString(sm[1]));
+      }
+    }
+  }
+
+  // Method 2: If no BT/ET found, try to find readable text streams
+  if (textParts.length === 0) {
+    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    while ((match = streamRegex.exec(raw)) !== null) {
+      const content = match[1];
+      // Only process if it looks like it has text operators
+      if (content.includes("Tj") || content.includes("TJ")) {
+        const tjRegex2 = /\(([^)]*)\)\s*Tj/g;
+        let tm2;
+        while ((tm2 = tjRegex2.exec(content)) !== null) {
+          textParts.push(decodePDFString(tm2[1]));
+        }
+      }
+    }
+  }
+
+  let result = textParts.join(" ")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "")
+    .replace(/\\t/g, " ")
+    .replace(/\\\(/g, "(")
+    .replace(/\\\)/g, ")")
+    .replace(/\\\\/g, "\\")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return result;
+}
+
+function decodePDFString(s) {
+  // Handle PDF escape sequences
+  return s
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\(/g, "(")
+    .replace(/\\\)/g, ")")
+    .replace(/\\\\/g, "\\")
+    .replace(/\\(\d{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
+}
+
 
 // ═══════════════════════════════════════════════════════════════════
 // AI (OpenRouter)
@@ -668,6 +794,7 @@ export default {
         case "/api/moodle/token":    return await moodleTokenFn(body, env);
         case "/api/moodle/call":     return await moodleCall(body, env);
         case "/api/moodle/file":     return await moodleFile(body, env);
+        case "/api/moodle/extract":  return await moodleExtract(body, env);
         case "/api/ai":              return await aiProxy(body, env);
         case "/api/zona/login":      return await zonaLogin(body, env);
         case "/api/zona/scrape":     return await zonaScrape(body, env);
