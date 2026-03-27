@@ -1,0 +1,14 @@
+name = "studium-api"
+main = "index.js"
+compatibility_date = "2024-12-01"
+
+[vars]
+MOODLE_URL = "https://campus.ucalp.edu.ar"
+AI_MODEL = "arcee-ai/trinity-large-preview:free"
+# IMPORTANT: Set these after creating Google OAuth credentials
+# GOOGLE_CLIENT_ID = "your-client-id.apps.googleusercontent.com"
+# ALLOWED_ORIGIN = "https://studium-6hw.pages.dev"
+
+# Set secrets via CLI:
+# wrangler secret put OPENROUTER_API_KEY
+# wrangler secret put GOOGLE_CLIENT_SECRET

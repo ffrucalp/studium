@@ -1,0 +1,204 @@
+import { createContext, useContext, useState, useCallback } from "react";
+import { getMoodleToken, getSiteInfo, getUserCourses, getCourseContents, assignCourseColor, parseCourseContents } from "../services/moodle";
+import { zonaLogin, zonaGetProfile } from "../services/zona";
+
+const AppContext = createContext(null);
+
+// ─── Mock data ────────────────────────────────────────────────────
+const MOCK_COURSES = [
+  { id: 1, fullname: "Introducción a la Gobernanza de Datos", shortname: "IGD", category: "1er Año", progress: 65, materials: 12, color: "#2563eb" },
+  { id: 2, fullname: "Fundamentos de Computación", shortname: "FC", category: "1er Año", progress: 40, materials: 8, color: "#7c3aed" },
+  { id: 3, fullname: "Introducción a la Economía", shortname: "IE", category: "1er Año", progress: 80, materials: 15, color: "#059669" },
+  { id: 4, fullname: "Filosofía General I", shortname: "FG1", category: "1er Año", progress: 55, materials: 10, color: "#d97706" },
+  { id: 5, fullname: "Derecho y Gobernanza Digital", shortname: "DGD", category: "1er Año", progress: 20, materials: 6, color: "#0891b2" },
+];
+
+export const MOCK_MATERIALS = [
+  { id: 1, name: "Programa de la materia 2026", type: "pdf", size: "245 KB", section: "General" },
+  { id: 2, name: "Guía de Estudio - Unidad 1", type: "pdf", size: "1.2 MB", section: "Unidad 1" },
+  { id: 3, name: "Apunte: Conceptos fundamentales de datos", type: "pdf", size: "890 KB", section: "Unidad 1" },
+  { id: 4, name: "Lectura obligatoria - Cap. 1 al 3", type: "pdf", size: "3.4 MB", section: "Unidad 1" },
+  { id: 5, name: "Guía de Estudio - Unidad 2", type: "pdf", size: "1.1 MB", section: "Unidad 2" },
+  { id: 6, name: "Apunte: Gobernanza y gestión de datos", type: "pdf", size: "760 KB", section: "Unidad 2" },
+  { id: 7, name: "Presentación - Clase 1", type: "pptx", size: "5.2 MB", section: "Unidad 1" },
+  { id: 8, name: "Actividad práctica N°1", type: "assign", size: "", section: "Unidad 1" },
+];
+
+export function AppProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [moodleToken, setMoodleToken] = useState(null);
+  const [moodleUserId, setMoodleUserId] = useState(null);
+  const [courses, setCourses] = useState([]);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [courseMaterials, setCourseMaterials] = useState({});
+  const [useMock, setUseMock] = useState(false);
+
+  // Zona Interactiva state
+  const [zonaSession, setZonaSession] = useState(null);
+  const [zonaStudent, setZonaStudent] = useState(null);
+  const [zonaProfile, setZonaProfile] = useState(null);
+  const [zonaLoading, setZonaLoading] = useState(false);
+
+  // Google tokens
+  const [googleAccessToken, setGoogleAccessToken] = useState(null);
+  const [googleRefreshToken, setGoogleRefreshToken] = useState(null);
+
+  // ── Google OAuth Login ──
+  const loginWithGoogle = useCallback((userData) => {
+    setUser({
+      name: userData?.name || "Estudiante UCALP",
+      email: userData?.email || "alumno@ucalpvirtual.edu.ar",
+      picture: userData?.picture || null,
+      given_name: userData?.given_name || null,
+    });
+  }, []);
+
+  // ── Store Google tokens from OAuth callback ──
+  const setGoogleTokens = useCallback((data) => {
+    if (data.access_token) setGoogleAccessToken(data.access_token);
+    if (data.refresh_token) setGoogleRefreshToken(data.refresh_token);
+  }, []);
+
+  // ── Connect both Moodle + Zona with same credentials ──
+  const connectMoodle = useCallback(async (username, password) => {
+    const results = { moodle: false, zona: false };
+
+    // Try Moodle
+    try {
+      const token = await getMoodleToken(username, password);
+      setMoodleToken(token);
+      const siteInfo = await getSiteInfo(token);
+      setMoodleUserId(siteInfo.userid);
+      const rawCourses = await getUserCourses(token, siteInfo.userid);
+      const currentYear = new Date().getFullYear().toString(); // "2026"
+      const enriched = rawCourses
+        .filter(c => c.visible !== 0)
+        .filter(c => {
+          // Show only courses from current year
+          const name = (c.fullname || "").toLowerCase();
+          const short = (c.shortname || "").toLowerCase();
+          return name.includes(currentYear) || short.includes(currentYear);
+        })
+        .map((c, i) => {
+          // Clean up course name: remove "1 - " prefix and "DISTDATOS1/2026" suffix
+          let cleanName = c.fullname || "";
+          cleanName = cleanName.replace(/^\d+\s*-\s*/, ""); // remove "1 - " prefix
+          cleanName = cleanName.replace(/\s*(DIST\w+\d*\/\d{4}|\w+-\w+-\d+\s*-\s*\d{4})$/i, ""); // remove code suffix
+          return {
+            id: c.id,
+            fullname: cleanName.trim() || c.fullname,
+            shortname: c.shortname || c.fullname.substring(0, 3).toUpperCase(),
+            category: c.categoryname || "",
+            progress: c.progress ?? 0,
+            materials: 0, color: assignCourseColor(i), _raw: c,
+          };
+        });
+      setCourses(enriched);
+      setUseMock(false);
+      results.moodle = true;
+    } catch (err) {
+      console.warn("Moodle fallback to mock:", err.message);
+      setMoodleToken("mock_token");
+      setCourses(MOCK_COURSES);
+      setUseMock(true);
+      results.moodle = true; // mock fallback
+    }
+
+    // Try Zona Interactiva (same credentials: DNI + password)
+    try {
+      const zona = await zonaLogin(username, password);
+      setZonaSession(zona.session);
+      setZonaStudent(zona.student);
+
+      // Update user name from Zona if available
+      if (zona.student?.nombre) {
+        setUser(prev => ({
+          ...prev,
+          name: zona.student.nombre,
+          email: zona.student.email || prev?.email,
+          campusUser: zona.student.campusUser,
+          carreras: zona.student.carreras,
+          carreraActual: zona.student.carreraActual,
+        }));
+      }
+
+      results.zona = true;
+    } catch (err) {
+      console.warn("Zona login failed:", err.message);
+    }
+
+    return results;
+  }, []);
+
+  // ── Load Zona academic profile ──
+  const loadZonaProfile = useCallback(async (idCliente = null) => {
+    if (!zonaSession) return null;
+    setZonaLoading(true);
+    try {
+      const profile = await zonaGetProfile(zonaSession, idCliente);
+      setZonaProfile(profile);
+      return profile;
+    } catch (err) {
+      console.error("Error loading Zona profile:", err);
+      return null;
+    } finally {
+      setZonaLoading(false);
+    }
+  }, [zonaSession]);
+
+  // ── Load Course Materials ──
+  const loadCourseMaterials = useCallback(async (courseId) => {
+    if (courseMaterials[courseId]) return courseMaterials[courseId];
+
+    if (useMock || !moodleToken || moodleToken === "mock_token") {
+      setCourseMaterials(prev => ({ ...prev, [courseId]: MOCK_MATERIALS }));
+      return MOCK_MATERIALS;
+    }
+
+    try {
+      const sections = await getCourseContents(moodleToken, courseId);
+      const materials = parseCourseContents(sections);
+      setCourseMaterials(prev => ({ ...prev, [courseId]: materials }));
+      setCourses(prev => prev.map(c => c.id === courseId ? { ...c, materials: materials.length } : c));
+      return materials;
+    } catch (err) {
+      console.error("Error loading materials:", err);
+      return MOCK_MATERIALS;
+    }
+  }, [moodleToken, useMock, courseMaterials]);
+
+  // ── Logout ──
+  const logout = useCallback(() => {
+    setUser(null);
+    setMoodleToken(null);
+    setMoodleUserId(null);
+    setCourses([]);
+    setSelectedCourse(null);
+    setCourseMaterials({});
+    setUseMock(false);
+    setZonaSession(null);
+    setZonaStudent(null);
+    setZonaProfile(null);
+    setGoogleAccessToken(null);
+    setGoogleRefreshToken(null);
+  }, []);
+
+  return (
+    <AppContext.Provider value={{
+      user, moodleToken, moodleUserId, courses, selectedCourse,
+      courseMaterials, useMock,
+      zonaSession, zonaStudent, zonaProfile, zonaLoading,
+      googleAccessToken, googleRefreshToken,
+      setSelectedCourse, loginWithGoogle, setGoogleTokens, connectMoodle,
+      loadCourseMaterials, loadZonaProfile, logout,
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+export const useApp = () => {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error("useApp must be used within AppProvider");
+  return ctx;
+};
