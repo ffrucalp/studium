@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { P, ff } from "../styles/theme";
+import { CONFIG } from "../config";
 import { useApp } from "../context/AppContext";
 import { generateCourseSummary, generateQuiz, callAI } from "../services/ai";
-import { extractFileText } from "../services/moodle";
+import { extractFileText, downloadFile } from "../services/moodle";
 import { ensureDriveFolder, uploadMoodleFileToDrive, listDriveFolders, createDriveFolder } from "../services/google";
 import { Btn, RenderMarkdown } from "../components/UI";
-import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader, Maximize2, Minimize2, Type, FolderOpen, ChevronRight, Plus, ArrowLeft } from "lucide-react";
+import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader, Maximize2, Minimize2, Type, FolderOpen, ChevronRight, Plus, ArrowLeft, FileSearch } from "lucide-react";
 
 const FILE_COLORS = {
   resource: { bg: "#FFEBEE", fg: "#B71C1C" },
@@ -322,6 +323,132 @@ function FolderPicker({ accessToken, fileName, onSelect, onClose }) {
   );
 }
 
+/**
+ * PDF Viewer Modal - uses Adobe PDF Embed API with annotation tools,
+ * falls back to native browser viewer if Adobe key not configured.
+ */
+function PDFViewerModal({ mat, moodleToken, onClose }) {
+  const containerRef = useRef(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [blobUrl, setBlobUrl] = useState(null);
+  const viewerInitialized = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const file = mat.files?.[0];
+    if (!file?.fileurl || !moodleToken) return;
+
+    (async () => {
+      try {
+        const data = await downloadFile(moodleToken, file.fileurl);
+        if (cancelled) return;
+
+        // Convert base64 to Uint8Array
+        const binary = atob(data.content);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+        const blob = new Blob([bytes], { type: "application/pdf" });
+
+        // Try Adobe PDF Embed API first
+        if (CONFIG.ADOBE_CLIENT_ID && window.AdobeDC && !viewerInitialized.current) {
+          viewerInitialized.current = true;
+          const adobeDCView = new window.AdobeDC.View({
+            clientId: CONFIG.ADOBE_CLIENT_ID,
+            divId: "studium-pdf-viewer",
+            locale: "es-ES",
+          });
+          adobeDCView.previewFile({
+            content: { promise: Promise.resolve(bytes.buffer) },
+            metaData: { fileName: file.filename || mat.name },
+          }, {
+            embedMode: "FULL_WINDOW",
+            showAnnotationTools: true,
+            showDownloadPDF: true,
+            showPrintPDF: true,
+            enableAnnotationAPIs: true,
+            includePDFAnnotations: true,
+            defaultViewMode: "FIT_PAGE",
+          });
+          setLoading(false);
+        } else {
+          // Fallback: native browser PDF viewer
+          const url = URL.createObjectURL(blob);
+          setBlobUrl(url);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) { setError(err.message); setLoading(false); }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [mat, moodleToken]);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+      display: "flex", flexDirection: "column",
+    }}>
+      {/* Header bar */}
+      <div style={{
+        padding: "10px 20px", background: "#1A1A1A",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <FileSearch size={18} style={{ color: "#D97706" }} />
+          <span style={{ color: "#fff", fontSize: 14, fontWeight: 600, maxWidth: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {mat.name}
+          </span>
+          {!CONFIG.ADOBE_CLIENT_ID && (
+            <span style={{ color: "#9CA3AF", fontSize: 11, background: "rgba(255,255,255,0.1)", padding: "2px 8px", borderRadius: 4 }}>
+              Vista básica · Configurá VITE_ADOBE_CLIENT_ID para anotaciones
+            </span>
+          )}
+        </div>
+        <button onClick={onClose}
+          style={{ padding: "6px 16px", borderRadius: 8, background: P.red, color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer" }}>
+          Cerrar
+        </button>
+      </div>
+
+      {/* PDF content */}
+      <div ref={containerRef} style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        {loading && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", gap: 10 }}>
+            <div style={{ width: 18, height: 18, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            Cargando PDF...
+          </div>
+        )}
+        {error && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: P.redMuted, flexDirection: "column", gap: 10 }}>
+            <span style={{ fontSize: 16, fontWeight: 600 }}>Error al cargar el PDF</span>
+            <span style={{ fontSize: 13 }}>{error}</span>
+          </div>
+        )}
+
+        {/* Adobe PDF Embed API container */}
+        <div id="studium-pdf-viewer" style={{ width: "100%", height: "100%" }} />
+
+        {/* Fallback: native iframe viewer */}
+        {blobUrl && (
+          <iframe
+            src={blobUrl}
+            title={mat.name}
+            style={{ width: "100%", height: "100%", border: "none" }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CourseDetail({ course, onBack, onNavigateChat, onNavigateQuiz }) {
   const { loadCourseMaterials, googleAccessToken, moodleToken } = useApp();
   const [materials, setMaterials] = useState(null);
@@ -335,6 +462,8 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
   const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
   const [expandedView, setExpandedView] = useState(false); // full-screen content view
   const [folderPickerMat, setFolderPickerMat] = useState(null); // material awaiting folder selection
+  const [pdfViewerMat, setPdfViewerMat] = useState(null); // material being viewed as PDF
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -428,6 +557,17 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
     } catch (err) {
       setSavedFiles(prev => ({ ...prev, [mat.id]: { saving: false, error: err.message } }));
     }
+  };
+
+  // Open PDF in full viewer
+  const openPdfViewer = async (mat) => {
+    const file = mat.files?.[0];
+    if (!file?.fileurl || !moodleToken) return;
+    const isPdf = (file.mimetype || "").includes("pdf") || (file.filename || "").toLowerCase().endsWith(".pdf");
+    if (!isPdf) return;
+    setPdfLoading(true);
+    setPdfViewerMat(mat);
+    // The actual PDF loading happens inside the PDFViewerModal component
   };
 
   const extractedCount = Object.values(extractedTexts).filter(v => v.text).length;
@@ -524,6 +664,13 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
                         title="Leer archivo con IA"
                         style={{ width: 28, height: 28, borderRadius: 6, background: "#EFF6FF", color: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", opacity: extracted?.loading ? 0.5 : 1 }}>
                         <Eye size={13} />
+                      </button>
+                    )}
+                    {hasFile && ((mat.files?.[0]?.mimetype || "").includes("pdf") || (mat.files?.[0]?.filename || "").toLowerCase().endsWith(".pdf")) && (
+                      <button onClick={(e) => { e.stopPropagation(); openPdfViewer(mat); }}
+                        title="Ver PDF completo"
+                        style={{ width: 28, height: 28, borderRadius: 6, background: "#FEF3C7", color: "#D97706", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}>
+                        <FileSearch size={13} />
                       </button>
                     )}
                     {extracted?.text && (
@@ -700,6 +847,15 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
           fileName={folderPickerMat.files?.[0]?.filename || folderPickerMat.name}
           onSelect={(folderId) => saveFileToDrive(folderPickerMat, folderId)}
           onClose={() => setFolderPickerMat(null)}
+        />
+      )}
+
+      {/* PDF Viewer Modal */}
+      {pdfViewerMat && (
+        <PDFViewerModal
+          mat={pdfViewerMat}
+          moodleToken={moodleToken}
+          onClose={() => { setPdfViewerMat(null); setPdfLoading(false); }}
         />
       )}
     </div>

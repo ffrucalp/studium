@@ -6,4 +6,5 @@ export const CONFIG = {
   API_BASE: API_BASE,
   AI_PROXY_URL: `${API_BASE}/api/ai`,
   GOOGLE_CLIENT_ID: import.meta.env.VITE_GOOGLE_CLIENT_ID || "",
+  ADOBE_CLIENT_ID: import.meta.env.VITE_ADOBE_CLIENT_ID || "",
 };

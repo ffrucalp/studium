@@ -352,6 +352,39 @@ async function googleDrive(body, env) {
     return json({ files: data.files || [] }, 200, env);
   }
 
+  // List folders only (for folder picker)
+  if (action === "listFolders") {
+    const parentQ = folderId ? `'${folderId}' in parents and ` : ``;
+    const q = `${parentQ}mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&orderBy=name&pageSize=100`,
+      { headers: { "Authorization": `Bearer ${access_token}` } }
+    );
+    const data = await res.json();
+    if (data.error) return json({ error: data.error.message }, data.error.code || 400, env);
+    return json({ folders: data.files || [] }, 200, env);
+  }
+
+  // Create a new folder
+  if (action === "createFolder") {
+    const metadata = {
+      name: body.folderName || "Nueva carpeta",
+      mimeType: "application/vnd.google-apps.folder",
+      parents: folderId ? [folderId] : undefined,
+    };
+    const res = await fetch("https://www.googleapis.com/drive/v3/files", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(metadata),
+    });
+    const data = await res.json();
+    if (data.error) return json({ error: data.error.message }, data.error.code || 400, env);
+    return json({ folder: { id: data.id, name: data.name } }, 200, env);
+  }
+
   return json({ error: "Action no válida" }, 400, env);
 }
 
@@ -432,6 +465,23 @@ async function moodleExtract(body, env) {
                .replace(/&amp;/g, "&")
                .replace(/&lt;/g, "<")
                .replace(/&gt;/g, ">")
+               .replace(/&quot;/g, '"')
+               .replace(/&aacute;/gi, "á")
+               .replace(/&eacute;/gi, "é")
+               .replace(/&iacute;/gi, "í")
+               .replace(/&oacute;/gi, "ó")
+               .replace(/&uacute;/gi, "ú")
+               .replace(/&ntilde;/gi, "ñ")
+               .replace(/&Aacute;/g, "Á")
+               .replace(/&Eacute;/g, "É")
+               .replace(/&Iacute;/g, "Í")
+               .replace(/&Oacute;/g, "Ó")
+               .replace(/&Uacute;/g, "Ú")
+               .replace(/&Ntilde;/g, "Ñ")
+               .replace(/&uuml;/gi, "ü")
+               .replace(/&Uuml;/g, "Ü")
+               .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n)))
+               .replace(/&#x([0-9A-Fa-f]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
                .replace(/\s+/g, " ");
     }
     text = raw.trim();
@@ -454,70 +504,515 @@ async function moodleExtract(body, env) {
 }
 
 /**
- * Basic PDF text extraction - extracts text from PDF streams
+ * Improved PDF text extraction
+ * Handles FlateDecode compressed streams, hex strings, ToUnicode CMaps
  */
 function extractPDFText(bytes) {
-  // Convert to string for regex processing
+  // Convert to string for regex processing (latin1 to preserve bytes)
   let raw = "";
   for (let i = 0; i < bytes.length; i++) raw += String.fromCharCode(bytes[i]);
 
   const textParts = [];
 
-  // Method 1: Find text between BT and ET operators (text blocks)
-  const btEtRegex = /BT\s*([\s\S]*?)\s*ET/g;
-  let match;
-  while ((match = btEtRegex.exec(raw)) !== null) {
-    const block = match[1];
-    // Extract text from Tj and TJ operators
-    // Tj: (text) Tj
-    const tjRegex = /\(([^)]*)\)\s*Tj/g;
-    let tm;
-    while ((tm = tjRegex.exec(block)) !== null) {
-      textParts.push(decodePDFString(tm[1]));
-    }
-    // TJ: [(text) number (text) ...] TJ
-    const tjArrayRegex = /\[([\s\S]*?)\]\s*TJ/g;
-    while ((tm = tjArrayRegex.exec(block)) !== null) {
-      const inner = tm[1];
-      const strRegex = /\(([^)]*)\)/g;
-      let sm;
-      while ((sm = strRegex.exec(inner)) !== null) {
-        textParts.push(decodePDFString(sm[1]));
-      }
-    }
-  }
+  // ── Step 1: Try to decompress FlateDecode streams ──
+  // Find all stream positions and try to inflate them
+  const decompressedStreams = [];
+  const streamPositions = findStreamPositions(raw, bytes);
 
-  // Method 2: If no BT/ET found, try to find readable text streams
-  if (textParts.length === 0) {
-    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-    while ((match = streamRegex.exec(raw)) !== null) {
-      const content = match[1];
-      // Only process if it looks like it has text operators
-      if (content.includes("Tj") || content.includes("TJ")) {
-        const tjRegex2 = /\(([^)]*)\)\s*Tj/g;
-        let tm2;
-        while ((tm2 = tjRegex2.exec(content)) !== null) {
-          textParts.push(decodePDFString(tm2[1]));
+  for (const sp of streamPositions) {
+    // Check if the object has FlateDecode filter
+    const objHeader = raw.substring(Math.max(0, sp.objStart), sp.streamStart);
+    const isFlateDecode = /\/Filter\s*\/FlateDecode/i.test(objHeader);
+
+    if (isFlateDecode) {
+      try {
+        const inflated = inflateSync(bytes.slice(sp.dataStart, sp.dataEnd));
+        if (inflated) {
+          let decoded = "";
+          for (let i = 0; i < inflated.length; i++) decoded += String.fromCharCode(inflated[i]);
+          decompressedStreams.push({ content: decoded, objHeader });
         }
+      } catch {}
+    } else {
+      // Non-compressed stream
+      const content = raw.substring(sp.dataStart, sp.dataEnd);
+      decompressedStreams.push({ content, objHeader });
+    }
+  }
+
+  // ── Step 2: Parse ToUnicode CMaps from decompressed streams ──
+  const unicodeMaps = {};
+  for (const ds of decompressedStreams) {
+    if (ds.content.includes("beginbfchar") || ds.content.includes("beginbfrange")) {
+      const fontName = extractFontName(ds.objHeader, raw);
+      const map = parseCMap(ds.content);
+      if (Object.keys(map).length > 0 && fontName) {
+        unicodeMaps[fontName] = map;
+      }
+      // Also store as a generic map if we only have one
+      if (Object.keys(map).length > 0) {
+        unicodeMaps["_last"] = { ...unicodeMaps["_last"], ...map };
       }
     }
   }
 
-  let result = textParts.join(" ")
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "")
-    .replace(/\\t/g, " ")
-    .replace(/\\\(/g, "(")
-    .replace(/\\\)/g, ")")
-    .replace(/\\\\/g, "\\")
-    .replace(/\s+/g, " ")
+  // ── Step 3: Extract text from all streams (decompressed + raw) ──
+  for (const ds of decompressedStreams) {
+    const content = ds.content;
+    if (!content.includes("BT") && !content.includes("Tj") && !content.includes("TJ")) continue;
+
+    const btEtRegex = /BT\s*([\s\S]*?)\s*ET/g;
+    let match;
+    while ((match = btEtRegex.exec(content)) !== null) {
+      const block = match[1];
+      let currentFont = null;
+      const parts = extractTextFromBlock(block, unicodeMaps, currentFont);
+      textParts.push(...parts);
+      // Add newline between BT/ET blocks (each block is typically a line or paragraph)
+      textParts.push("\n");
+    }
+  }
+
+  // ── Step 4: Fallback - try uncompressed streams from raw ──
+  if (textParts.length === 0) {
+    const btEtRegex = /BT\s*([\s\S]*?)\s*ET/g;
+    let match;
+    while ((match = btEtRegex.exec(raw)) !== null) {
+      const block = match[1];
+      const parts = extractTextFromBlock(block, unicodeMaps, null);
+      textParts.push(...parts);
+      textParts.push("\n");
+    }
+  }
+
+  let result = textParts.join("")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    // Remove isolated garbled characters (replacement chars, control chars, lone non-Latin symbols)
+    .replace(/[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+    // Remove lines that are only garbled/non-readable (boxes, CJK without context)
+    .replace(/^[^\x20-\x7E\u00A0-\u024F\u1E00-\u1EFF]{1,}$/gm, "")
     .trim();
 
   return result;
 }
 
+/**
+ * Find byte positions of all stream/endstream pairs
+ */
+function findStreamPositions(raw, bytes) {
+  const positions = [];
+  const streamRe = /stream\r?\n/g;
+  let m;
+  while ((m = streamRe.exec(raw)) !== null) {
+    const dataStart = m.index + m[0].length;
+    // Find endstream
+    const endIdx = raw.indexOf("endstream", dataStart);
+    if (endIdx === -1) continue;
+    // Trim trailing \r\n before endstream
+    let dataEnd = endIdx;
+    if (raw[dataEnd - 1] === "\n") dataEnd--;
+    if (raw[dataEnd - 1] === "\r") dataEnd--;
+
+    // Find the object start (look backwards for "obj")
+    let objStart = raw.lastIndexOf(" obj", m.index);
+    if (objStart === -1) objStart = raw.lastIndexOf("\nobj", m.index);
+    if (objStart === -1) objStart = Math.max(0, m.index - 500);
+    else objStart = raw.lastIndexOf("\n", objStart - 1) + 1;
+
+    positions.push({ objStart, streamStart: m.index, dataStart, dataEnd });
+  }
+  return positions;
+}
+
+/**
+ * Simple zlib inflate (deflate decompression) for Cloudflare Workers
+ * Uses raw inflate since PDF FlateDecode uses zlib (header + deflate + checksum)
+ */
+function inflateSync(data) {
+  // PDF FlateDecode uses zlib format: 2-byte header + deflate data + 4-byte checksum
+  // Skip zlib header (usually 0x78 0x9C or 0x78 0x01 or 0x78 0xDA)
+  if (data.length < 6) return null;
+  if (data[0] !== 0x78) return null; // Not zlib
+
+  const deflateData = data.slice(2, -4); // Strip header and checksum
+
+  try {
+    return tinf_uncompress(deflateData);
+  } catch {
+    return null;
+  }
+}
+
+// ── Minimal DEFLATE decompressor ──
+// Based on tinf by Joergen Ibsen, ported to JS
+function tinf_uncompress(source) {
+  const MAXBITS = 15;
+  const MAXLCODES = 286;
+  const MAXDCODES = 30;
+  const FIXLCODES = 288;
+
+  let srcPos = 0;
+  let bitBuf = 0;
+  let bitCount = 0;
+  const dest = [];
+
+  function readBits(num) {
+    while (bitCount < num) {
+      if (srcPos >= source.length) throw new Error("Unexpected end");
+      bitBuf |= source[srcPos++] << bitCount;
+      bitCount += 8;
+    }
+    const val = bitBuf & ((1 << num) - 1);
+    bitBuf >>= num;
+    bitCount -= num;
+    return val;
+  }
+
+  function buildTree(lengths, num) {
+    const offs = new Uint16Array(MAXBITS + 1);
+    const count = new Uint16Array(MAXBITS + 1);
+    const symbols = new Uint16Array(num);
+    for (let i = 0; i < num; i++) if (lengths[i]) count[lengths[i]]++;
+    offs[1] = 0;
+    for (let i = 1; i < MAXBITS; i++) offs[i + 1] = offs[i] + count[i];
+    for (let i = 0; i < num; i++) if (lengths[i]) symbols[offs[lengths[i]]++] = i;
+    return { count, symbols };
+  }
+
+  function decode(tree) {
+    let sum = 0, cur = 0, len = 0;
+    do {
+      cur = 2 * cur + readBits(1);
+      len++;
+      sum += tree.count[len];
+      cur -= tree.count[len];
+    } while (cur >= 0);
+    return tree.symbols[sum + cur];
+  }
+
+  // Fixed Huffman trees
+  const fixedLenLengths = new Uint8Array(FIXLCODES);
+  for (let i = 0; i < 144; i++) fixedLenLengths[i] = 8;
+  for (let i = 144; i < 256; i++) fixedLenLengths[i] = 9;
+  for (let i = 256; i < 280; i++) fixedLenLengths[i] = 7;
+  for (let i = 280; i < FIXLCODES; i++) fixedLenLengths[i] = 8;
+  const fixedLenTree = buildTree(fixedLenLengths, FIXLCODES);
+
+  const fixedDistLengths = new Uint8Array(MAXDCODES);
+  for (let i = 0; i < MAXDCODES; i++) fixedDistLengths[i] = 5;
+  const fixedDistTree = buildTree(fixedDistLengths, MAXDCODES);
+
+  const lenBits = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+  const lenBase = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+  const distBits = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+  const distBase = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+  const clOrder = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+
+  function inflateBlock(lt, dt) {
+    let sym;
+    while ((sym = decode(lt)) !== 256) {
+      if (sym < 256) {
+        dest.push(sym);
+      } else {
+        sym -= 257;
+        const length = lenBase[sym] + readBits(lenBits[sym]);
+        const distSym = decode(dt);
+        const offset = distBase[distSym] + readBits(distBits[distSym]);
+        for (let i = 0; i < length; i++) dest.push(dest[dest.length - offset]);
+      }
+    }
+  }
+
+  let bfinal;
+  do {
+    bfinal = readBits(1);
+    const btype = readBits(2);
+    if (btype === 0) {
+      // Stored
+      bitBuf = 0; bitCount = 0;
+      const len = source[srcPos] | (source[srcPos + 1] << 8); srcPos += 4;
+      for (let i = 0; i < len; i++) dest.push(source[srcPos++]);
+    } else if (btype === 1) {
+      inflateBlock(fixedLenTree, fixedDistTree);
+    } else if (btype === 2) {
+      const hlit = readBits(5) + 257;
+      const hdist = readBits(5) + 1;
+      const hclen = readBits(4) + 4;
+      const clLengths = new Uint8Array(19);
+      for (let i = 0; i < hclen; i++) clLengths[clOrder[i]] = readBits(3);
+      const clTree = buildTree(clLengths, 19);
+      const lengths = new Uint8Array(hlit + hdist);
+      let idx = 0;
+      while (idx < hlit + hdist) {
+        const s = decode(clTree);
+        if (s < 16) { lengths[idx++] = s; }
+        else if (s === 16) { const r = readBits(2) + 3; const prev = lengths[idx - 1]; for (let i = 0; i < r; i++) lengths[idx++] = prev; }
+        else if (s === 17) { const r = readBits(3) + 3; for (let i = 0; i < r; i++) lengths[idx++] = 0; }
+        else { const r = readBits(7) + 11; for (let i = 0; i < r; i++) lengths[idx++] = 0; }
+      }
+      const lt = buildTree(lengths.subarray(0, hlit), hlit);
+      const dt = buildTree(lengths.subarray(hlit), hdist);
+      inflateBlock(lt, dt);
+    } else { throw new Error("Invalid block type"); }
+  } while (!bfinal);
+
+  return new Uint8Array(dest);
+}
+
+/**
+ * Extract text operators from a BT..ET block
+ */
+function extractTextFromBlock(block, unicodeMaps, currentFont) {
+  const parts = [];
+  // Track font changes within block: /F1 12 Tf
+  const lines = block.split("\n");
+  let font = currentFont;
+  let lastY = null;
+  let lastFontSize = null;
+
+  for (const line of lines) {
+    const tfMatch = line.match(/\/(F\d+|[A-Za-z][A-Za-z0-9+,.-]*)\s+([\d.]+)\s+Tf/);
+    if (tfMatch) {
+      font = tfMatch[1];
+      const newSize = parseFloat(tfMatch[2]);
+      // Font size change often means new section/heading
+      if (lastFontSize && Math.abs(newSize - lastFontSize) > 2) parts.push("\n");
+      lastFontSize = newSize;
+    }
+
+    // Handle Td/TD (text positioning) - Y jumps = newline
+    const tdMatch = line.match(/([-\d.]+)\s+([-\d.]+)\s+T[dD]/);
+    if (tdMatch) {
+      const tx = parseFloat(tdMatch[1]);
+      const ty = parseFloat(tdMatch[2]);
+      if (Math.abs(ty) > 0.5) parts.push("\n");
+      else if (tx > 5) parts.push(" ");
+    }
+
+    // Handle Tm (text matrix): a b c d tx ty Tm
+    const tmMatch = line.match(/([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tm/);
+    if (tmMatch) {
+      const ty = parseFloat(tmMatch[6]);
+      if (lastY !== null && Math.abs(ty - lastY) > 1) {
+        parts.push("\n");
+        // Larger Y jump = paragraph break (double newline)
+        if (Math.abs(ty - lastY) > 15) parts.push("\n");
+      }
+      lastY = ty;
+    }
+
+    // T* = new line
+    if (/\bT\*/.test(line)) parts.push("\n");
+
+    // Tj operator: (text) Tj
+    const tjRegex = /(\((?:[^()\\]|\\.)*\)|<[0-9A-Fa-f]+>)\s*Tj/g;
+    let tm;
+    while ((tm = tjRegex.exec(line)) !== null) {
+      parts.push(decodePDFTextOperand(tm[1], unicodeMaps, font));
+    }
+
+    // TJ operator: [...] TJ
+    const tjArrayRegex = /\[([\s\S]*?)\]\s*TJ/g;
+    while ((tm = tjArrayRegex.exec(line)) !== null) {
+      const inner = tm[1];
+      // Extract strings and numbers
+      const elemRegex = /(\((?:[^()\\]|\\.)*\)|<[0-9A-Fa-f]+>)|([-]?\d{3,})/g;
+      let em;
+      while ((em = elemRegex.exec(inner)) !== null) {
+        if (em[1]) {
+          parts.push(decodePDFTextOperand(em[1], unicodeMaps, font));
+        } else if (em[2]) {
+          // Large negative number = word space
+          const kern = parseInt(em[2]);
+          if (kern < -100) parts.push(" ");
+        }
+      }
+    }
+
+    // ' operator (move to next line and show text)
+    const quoteRegex = /(\((?:[^()\\]|\\.)*\)|<[0-9A-Fa-f]+>)\s*'/g;
+    while ((tm = quoteRegex.exec(line)) !== null) {
+      parts.push("\n");
+      parts.push(decodePDFTextOperand(tm[1], unicodeMaps, font));
+    }
+  }
+
+  return parts;
+}
+
+/**
+ * Decode a PDF text operand - either (literal string) or <hex string>
+ */
+function decodePDFTextOperand(operand, unicodeMaps, font) {
+  if (operand.startsWith("<") && operand.endsWith(">")) {
+    // Hex string
+    const hex = operand.slice(1, -1);
+    // Try ToUnicode map first
+    const map = (font && unicodeMaps[font]) || unicodeMaps["_last"] || {};
+    if (Object.keys(map).length > 0) {
+      let result = "";
+      // Try 4-digit codes first, then 2-digit
+      for (let i = 0; i < hex.length; ) {
+        if (i + 4 <= hex.length) {
+          const code4 = hex.substring(i, i + 4).toUpperCase();
+          if (map[code4]) { result += map[code4]; i += 4; continue; }
+        }
+        if (i + 2 <= hex.length) {
+          const code2 = hex.substring(i, i + 2).toUpperCase();
+          if (map[code2]) { result += map[code2]; i += 2; continue; }
+          // Fallback: treat as char code
+          const charCode = parseInt(code2, 16);
+          if (charCode >= 32 && charCode < 127) result += String.fromCharCode(charCode);
+          else if (charCode > 127) result += String.fromCharCode(charCode);
+          i += 2;
+        } else { i++; }
+      }
+      return result;
+    }
+    // No map: treat as raw byte pairs
+    let result = "";
+    for (let i = 0; i + 1 < hex.length; i += 2) {
+      const code = parseInt(hex.substring(i, i + 2), 16);
+      if (code >= 32) result += String.fromCharCode(code);
+    }
+    return result;
+  }
+
+  if (operand.startsWith("(") && operand.endsWith(")")) {
+    // Literal string - decode escape sequences
+    return decodePDFLiteralString(operand.slice(1, -1), unicodeMaps, font);
+  }
+
+  return operand;
+}
+
+function decodePDFLiteralString(s, unicodeMaps, font) {
+  let result = "";
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\") {
+      i++;
+      if (i >= s.length) break;
+      switch (s[i]) {
+        case "n": result += "\n"; break;
+        case "r": result += "\r"; break;
+        case "t": result += "\t"; break;
+        case "(": result += "("; break;
+        case ")": result += ")"; break;
+        case "\\": result += "\\"; break;
+        default:
+          // Octal escape \ddd
+          if (s[i] >= "0" && s[i] <= "7") {
+            let oct = s[i];
+            if (i + 1 < s.length && s[i + 1] >= "0" && s[i + 1] <= "7") { oct += s[++i]; }
+            if (i + 1 < s.length && s[i + 1] >= "0" && s[i + 1] <= "7") { oct += s[++i]; }
+            const charCode = parseInt(oct, 8);
+            // Try unicode map
+            const map = (font && unicodeMaps[font]) || unicodeMaps["_last"];
+            const hexKey = charCode.toString(16).toUpperCase().padStart(2, "0");
+            if (map && map[hexKey]) { result += map[hexKey]; }
+            else { result += String.fromCharCode(charCode); }
+          } else {
+            result += s[i];
+          }
+      }
+    } else {
+      result += s[i];
+    }
+  }
+  return result;
+}
+
+/**
+ * Parse a CMap (ToUnicode) stream
+ */
+function parseCMap(content) {
+  const map = {};
+
+  // beginbfchar: <srcCode> <dstCode>
+  const bfcharRe = /beginbfchar\s*([\s\S]*?)\s*endbfchar/g;
+  let m;
+  while ((m = bfcharRe.exec(content)) !== null) {
+    const pairRe = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g;
+    let pm;
+    while ((pm = pairRe.exec(m[1])) !== null) {
+      const src = pm[1].toUpperCase();
+      const dst = pm[2];
+      map[src] = hexToUnicode(dst);
+    }
+  }
+
+  // beginbfrange: <start> <end> <dstStart> or <start> <end> [<dst1> <dst2> ...]
+  const bfrangeRe = /beginbfrange\s*([\s\S]*?)\s*endbfrange/g;
+  while ((m = bfrangeRe.exec(content)) !== null) {
+    const rangeBlock = m[1];
+    // Pattern: <start> <end> <dstStart>
+    const rangeRe = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g;
+    let rm;
+    while ((rm = rangeRe.exec(rangeBlock)) !== null) {
+      const start = parseInt(rm[1], 16);
+      const end = parseInt(rm[2], 16);
+      let dstStart = parseInt(rm[3], 16);
+      const srcLen = rm[1].length;
+      for (let i = start; i <= end; i++) {
+        map[i.toString(16).toUpperCase().padStart(srcLen, "0")] = String.fromCodePoint(dstStart++);
+      }
+    }
+    // Pattern: <start> <end> [<dst1> <dst2> ...]
+    const arrayRe = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*\[([\s\S]*?)\]/g;
+    while ((rm = arrayRe.exec(rangeBlock)) !== null) {
+      const start = parseInt(rm[1], 16);
+      const srcLen = rm[1].length;
+      const dsts = [];
+      const dstRe = /<([0-9A-Fa-f]+)>/g;
+      let dm;
+      while ((dm = dstRe.exec(rm[3])) !== null) dsts.push(dm[1]);
+      for (let i = 0; i < dsts.length; i++) {
+        map[(start + i).toString(16).toUpperCase().padStart(srcLen, "0")] = hexToUnicode(dsts[i]);
+      }
+    }
+  }
+
+  return map;
+}
+
+function hexToUnicode(hex) {
+  // Convert hex pairs to Unicode characters
+  let result = "";
+  for (let i = 0; i + 3 < hex.length; i += 4) {
+    result += String.fromCodePoint(parseInt(hex.substring(i, i + 4), 16));
+  }
+  if (result) return result;
+  // Fallback for 2-digit hex
+  if (hex.length === 2) return String.fromCharCode(parseInt(hex, 16));
+  // If odd-length or other
+  return String.fromCodePoint(parseInt(hex, 16));
+}
+
+/**
+ * Try to extract font name from the object header referencing a ToUnicode CMap
+ */
+function extractFontName(objHeader, fullRaw) {
+  // This CMap is referenced by a font object. Try to find which font.
+  // Look for /BaseFont /Name pattern
+  const bfMatch = objHeader.match(/\/BaseFont\s*\/([A-Za-z0-9+,.-]+)/);
+  if (bfMatch) return bfMatch[1];
+  // Look for object number and find font references
+  const objMatch = objHeader.match(/(\d+)\s+\d+\s+obj/);
+  if (objMatch) {
+    const objNum = objMatch[1];
+    // Search for /ToUnicode objNum 0 R in font definitions
+    const fontRe = new RegExp(`/(F\\d+)\\s+\\d+\\s+\\d+\\s+R`, "g");
+    // Simple: just return the object number as fallback key
+    return `_obj${objNum}`;
+  }
+  return null;
+}
+
 function decodePDFString(s) {
-  // Handle PDF escape sequences
+  // Handle PDF escape sequences (legacy compatibility)
   return s
     .replace(/\\n/g, "\n")
     .replace(/\\r/g, "\r")
@@ -564,6 +1059,28 @@ async function aiProxy(body, env) {
 // ZONA INTERACTIVA
 // ═══════════════════════════════════════════════════════════════════
 
+/**
+ * Read Zona response text with proper encoding (usually iso-8859-1 / windows-1252)
+ */
+async function readZonaText(response) {
+  const buf = await response.arrayBuffer();
+  const ct = response.headers.get("content-type") || "";
+  const charsetMatch = ct.match(/charset=([^\s;]+)/i);
+  const charset = charsetMatch ? charsetMatch[1].toLowerCase().replace(/^"|"$/g, "") : null;
+
+  // If server declares a non-UTF-8 charset, use it
+  if (charset && charset !== "utf-8") {
+    try { return new TextDecoder(charset).decode(buf); } catch {}
+  }
+
+  // Try UTF-8 strictly; if it fails, fall back to windows-1252 (superset of iso-8859-1)
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+  } catch {
+    return new TextDecoder("windows-1252").decode(buf);
+  }
+}
+
 async function zonaLogin(body, env) {
   const { username, password } = body;
   if (!username || !password) return json({ error: "Faltan usuario o contraseña" }, 400, env);
@@ -571,7 +1088,7 @@ async function zonaLogin(body, env) {
     // Step 1: GET login.php with redirect to get session cookie
     const initResp = await fetch(`${ZONA_URL}/login.php?redirect=%2Finicio.php`, { redirect: "manual" });
     let cookies = extractCookies(initResp);
-    if (initResp.status === 200) await initResp.text();
+    if (initResp.status === 200) await readZonaText(initResp);
     // Follow any initial redirects
     let loc = initResp.headers.get("location");
     if (loc) {
@@ -579,7 +1096,7 @@ async function zonaLogin(body, env) {
         headers: { "Cookie": cookies }, redirect: "manual"
       });
       cookies = mergeCookies(cookies, extractCookies(r));
-      if (r.status === 200) await r.text();
+      if (r.status === 200) await readZonaText(r);
     }
 
     // Step 2: POST to login.php with redirect param and boton field
@@ -607,10 +1124,10 @@ async function zonaLogin(body, env) {
       const redirectResp = await fetch(redirectUrl, { headers: { "Cookie": cookies }, redirect: "manual" });
       cookies = mergeCookies(cookies, extractCookies(redirectResp));
       loc = redirectResp.headers.get("location");
-      if (!loc) html = await redirectResp.text();
+      if (!loc) html = await readZonaText(redirectResp);
       attempts++;
     }
-    if (!html && loginResp.status === 200) html = await loginResp.text();
+    if (!html && loginResp.status === 200) html = await readZonaText(loginResp);
 
     // Step 4: Check if we're on role selection page
     if (html.includes("Elija el rol") || html.includes("indexElige") || html.includes("aW5kZXhFbGlnZQ==")) {
@@ -632,10 +1149,10 @@ async function zonaLogin(body, env) {
         });
         cookies = mergeCookies(cookies, extractCookies(r));
         loc = r.headers.get("location");
-        if (!loc) html = await r.text();
+        if (!loc) html = await readZonaText(r);
         roleAttempts++;
       }
-      if (!html) html = await selectResp.text();
+      if (!html) html = await readZonaText(selectResp);
     }
 
     // Step 5: Try fetching inicio if not on dashboard yet
@@ -648,7 +1165,7 @@ async function zonaLogin(body, env) {
       if (loc && loc.includes("login")) {
         return json({ error: "Sesión no válida después del login", debug: { cookies: cookies.substring(0, 100) } }, 401, env);
       }
-      if (!loc) html = await inicioResp.text();
+      if (!loc) html = await readZonaText(inicioResp);
     }
 
     // Success check
@@ -678,7 +1195,7 @@ async function zonaScrape(body, env) {
     let url = `${ZONA_URL}/index.php?m=${pageKey || page}`;
     if (params) for (const [k, v] of Object.entries(params)) url += `&${k}=${encodeURIComponent(v)}`;
     const resp = await fetch(url, { headers: { "Cookie": session } });
-    return json({ html: await resp.text(), url }, 200, env);
+    return json({ html: await readZonaText(resp), url }, 200, env);
   } catch (err) { return json({ error: err.message }, 500, env); }
 }
 
@@ -702,22 +1219,43 @@ async function zonaProfile(body, env) {
     ];
     for (const p of pages) {
       const resp = await fetch(`${ZONA_URL}/index.php?m=${ZONA_PAGES[p.page]}${p.suffix || ""}`, { headers: { "Cookie": session } });
-      if (resp.ok) results[p.key] = p.parser(await resp.text());
+      if (resp.ok) results[p.key] = p.parser(await readZonaText(resp));
     }
     return json(results, 200, env);
   } catch (err) { return json({ error: err.message }, 500, env); }
 }
 
 // ─── HTML Parsers ────────────────────────────────────────────────
+
+/** Decode common HTML entities (Spanish chars, numeric refs) */
+function decHtml(s) {
+  if (!s) return s;
+  return s
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&aacute;/gi, "á").replace(/&Aacute;/g, "Á")
+    .replace(/&eacute;/gi, "é").replace(/&Eacute;/g, "É")
+    .replace(/&iacute;/gi, "í").replace(/&Iacute;/g, "Í")
+    .replace(/&oacute;/gi, "ó").replace(/&Oacute;/g, "Ó")
+    .replace(/&uacute;/gi, "ú").replace(/&Uacute;/g, "Ú")
+    .replace(/&ntilde;/gi, "ñ").replace(/&Ntilde;/g, "Ñ")
+    .replace(/&uuml;/gi, "ü").replace(/&Uuml;/g, "Ü")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n)))
+    .replace(/&#x([0-9A-Fa-f]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+}
+
 function parseStudentInfo(html) {
   const info = {};
-  const m = (r) => { const match = html.match(r); return match ? match[1].trim() : null; };
+  const m = (r) => { const match = html.match(r); return match ? decHtml(match[1].trim()) : null; };
   info.nombre = m(/<h3[^>]*>([^<]+)<\/h3>/);
   info.legajo = m(/Legajo:\s*<\/small>\s*([^<]*)/);
   info.email = m(/([A-Za-z0-9._%+-]+@ucalpvirtual\.edu\.ar)/);
   info.campusUser = m(/Tu usuario en el campus virtual es\s*<b>([^<]+)<\/b>/);
   const careers = []; const cr = /<option[^>]*value="(\d+)"[^>]*>([^<]+)<\/option>/g; let cm;
-  while ((cm = cr.exec(html)) !== null) careers.push({ id: cm[1], nombre: cm[2].trim() });
+  while ((cm = cr.exec(html)) !== null) careers.push({ id: cm[1], nombre: decHtml(cm[2].trim()) });
   if (careers.length) info.carreras = careers;
   info.carreraActual = m(/<option[^>]*selected[^>]*>([^<]+)<\/option>/);
   return info;
@@ -725,15 +1263,15 @@ function parseStudentInfo(html) {
 
 function parseProfile(html) {
   const data = {}; const r = /<td[^>]*>([^<]+)<\/td>\s*<td[^>]*>([^<]+)<\/td>/g; let m;
-  while ((m = r.exec(html)) !== null) { const k = m[1].trim(), v = m[2].trim(); if (k && v && !/^\d+$/.test(k)) data[k] = v; }
+  while ((m = r.exec(html)) !== null) { const k = decHtml(m[1].trim()), v = decHtml(m[2].trim()); if (k && v && !/^\d+$/.test(k)) data[k] = v; }
   return data;
 }
 
 function parseAnalitico(html) {
   const materias = []; const r = /<tr[^>]*>\s*<td[^>]*>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>/g; let m;
   while ((m = r.exec(html)) !== null) {
-    const mat = m[1].trim();
-    if (mat && !/^(Materia|Asignatura|#)/i.test(mat)) materias.push({ materia: mat, nota: m[2].trim(), fecha: m[3].trim(), estado: m[4].trim() });
+    const mat = decHtml(m[1].trim());
+    if (mat && !/^(Materia|Asignatura|#)/i.test(mat)) materias.push({ materia: mat, nota: decHtml(m[2].trim()), fecha: decHtml(m[3].trim()), estado: decHtml(m[4].trim()) });
   }
   return materias;
 }
@@ -741,8 +1279,8 @@ function parseAnalitico(html) {
 function parseCursadas(html) {
   const c = []; const r = /<tr[^>]*>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/g; let m;
   while ((m = r.exec(html)) !== null) {
-    const mat = m[1].replace(/<[^>]+>/g, "").trim();
-    if (mat && !/^(Materia|Asignatura|#|Nombre)/i.test(mat)) c.push({ materia: mat, info: m[2].replace(/<[^>]+>/g, "").trim() });
+    const mat = decHtml(m[1].replace(/<[^>]+>/g, "").trim());
+    if (mat && !/^(Materia|Asignatura|#|Nombre)/i.test(mat)) c.push({ materia: mat, info: decHtml(m[2].replace(/<[^>]+>/g, "").trim()) });
   }
   return c;
 }
@@ -750,8 +1288,8 @@ function parseCursadas(html) {
 function parsePlanEstudios(html) {
   const p = []; const r = /<tr[^>]*>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/g; let m;
   while ((m = r.exec(html)) !== null) {
-    const mat = m[1].replace(/<[^>]+>/g, "").trim();
-    if (mat && !/^(Materia|Asignatura|Código|#)/i.test(mat)) p.push({ materia: mat, anio: m[2].replace(/<[^>]+>/g, "").trim(), estado: m[3].replace(/<[^>]+>/g, "").trim() });
+    const mat = decHtml(m[1].replace(/<[^>]+>/g, "").trim());
+    if (mat && !/^(Materia|Asignatura|Código|#)/i.test(mat)) p.push({ materia: mat, anio: decHtml(m[2].replace(/<[^>]+>/g, "").trim()), estado: decHtml(m[3].replace(/<[^>]+>/g, "").trim()) });
   }
   return p;
 }
