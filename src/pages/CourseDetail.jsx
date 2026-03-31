@@ -25,77 +25,133 @@ function fileSize(bytes) {
 }
 
 /**
- * Formats plain extracted text into styled HTML paragraphs
+ * Formats plain extracted text into styled HTML paragraphs.
+ * Handles both well-structured text (with newlines) and wall-of-text blobs.
  */
-function FormattedContent({ text, fullHeight }) {
+function FormattedContent({ text }) {
   if (!text) return null;
 
-  // Split into paragraphs (double newline or single newline with indent/caps change)
-  const paragraphs = text
+  // Clean garbled characters
+  let clean = text
+    .replace(/[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+    .replace(/[^\x20-\x7E\u00A0-\u024F\u1E00-\u1EFF\n\r\t]/g, "")
     .replace(/\r\n?/g, "\n")
+    .trim();
+
+  // Heading patterns common in academic PDFs (Spanish)
+  const headingPatterns = [
+    /(?:^|\n)\s*((?:SEMANA|UNIDAD|TEMA|MÓDULO|SECCIÓN|CAPÍTULO|PARTE|CLASE|ENCUENTRO|BLOQUE)\s*\d*[.:—\-]?\s*[^\n]{0,120})/gi,
+    /(?:^|\n)\s*((?:EJE TRANSVERSAL|INTRODUCCIÓN|CONCLUSIÓN|BIBLIOGRAFÍA|RESUMEN|OBJETIVOS|CONTENIDOS|METODOLOGÍA|EVALUACIÓN|CRONOGRAMA|PROGRAMA|FUNDAMENTACIÓN|ACTIVIDAD|FORO|ENTREGA|LECTURA|ENCUENTRO SINCRÓNICO|CRITERIOS DE APROBACIÓN)[.:—\-]?\s*[^\n]{0,120})/gi,
+    /(?:^|\n)\s*((?:FACULTAD|CARRERA|ASIGNATURA|PRIMER PARCIAL|SEGUNDO PARCIAL|TRABAJO PRÁCTICO|TP \d+)[.:—\-]?\s*[^\n]{0,120})/gi,
+  ];
+
+  // Step 1: Insert newlines before heading patterns if missing
+  for (const pattern of headingPatterns) {
+    clean = clean.replace(pattern, (match, heading) => {
+      return "\n\n" + heading.trim();
+    });
+  }
+
+  // Step 2: If text is still mostly a single blob (few newlines relative to length),
+  //         add breaks at sentence boundaries followed by uppercase words
+  const lineCount = clean.split("\n").filter(l => l.trim()).length;
+  const charCount = clean.length;
+  if (charCount > 500 && lineCount < charCount / 200) {
+    // Break at ". " followed by uppercase letter (likely new sentence/section)
+    clean = clean.replace(/\.\s+([A-ZÁÉÍÓÚÑÜ])/g, ".\n$1");
+  }
+
+  // Step 3: Split into blocks
+  const blocks = clean
     .split(/\n{2,}/)
-    .map(p => p.trim())
+    .map(b => b.trim())
     .filter(Boolean);
 
+  // If still only 1-2 blocks and very long, force split on single newlines
+  const finalBlocks = [];
+  for (const block of blocks) {
+    if (block.length > 600 && block.includes("\n")) {
+      const subBlocks = block.split("\n").map(s => s.trim()).filter(Boolean);
+      finalBlocks.push(...subBlocks);
+    } else {
+      finalBlocks.push(block);
+    }
+  }
+
+  // Detect if a block looks like a heading
+  const isHeading = (t) => {
+    if (t.length > 150) return false;
+    if (/^(SEMANA|UNIDAD|TEMA|MÓDULO|SECCIÓN|CAPÍTULO|PARTE|CLASE|BLOQUE)\s*\d/i.test(t)) return true;
+    if (/^(EJE TRANSVERSAL|INTRODUCCIÓN|CONCLUSIÓN|BIBLIOGRAFÍA|RESUMEN|OBJETIVOS|CONTENIDOS|EVALUACIÓN|ACTIVIDAD|FORO|ENTREGA|LECTURA|ENCUENTRO|CRITERIOS|PROGRAMA|FUNDAMENTACIÓN|PRIMER|SEGUNDO|TRABAJO|FACULTAD|CARRERA|ASIGNATURA)/i.test(t)) return true;
+    if (/^[A-ZÁÉÍÓÚÑÜ\s\d.:–\-]+$/.test(t) && t.length < 100) return true;
+    return false;
+  };
+
+  // Detect list items
+  const isListItem = (t) => /^[\-•·▪►]\s/.test(t) || /^[a-z]\)\s/i.test(t);
+  const isNumberedItem = (t) => /^\d+[\.\)]\s/.test(t) && t.length < 300;
+
   return (
-    <div style={{ fontFamily: "'Source Sans 3', sans-serif", fontSize: 14, lineHeight: 1.75, color: P.textSec }}>
-      {paragraphs.map((para, i) => {
-        // Detect if it looks like a heading (short, no period at end, possibly all caps or starts with number.)
-        const isHeading = para.length < 120 && !para.endsWith(".") && !para.endsWith(",") && (
-          /^[A-ZÁÉÍÓÚÑÜ\s\d.:–\-]+$/.test(para) ||
-          /^\d+[\.\)\-]\s/.test(para) ||
-          /^(CAPÍTULO|UNIDAD|TEMA|MÓDULO|SECCIÓN|PARTE|INTRODUCCIÓN|CONCLUSIÓN|BIBLIOGRAFÍA|RESUMEN)/i.test(para)
-        );
-
-        // Detect if it looks like a list item
-        const isListItem = /^[\-•·▪►]\s/.test(para) || /^[a-z]\)\s/i.test(para);
-        const isNumberedItem = /^\d+[\.\)]\s/.test(para) && para.length < 300;
-
-        // Detect sub-lines within the paragraph
-        const subLines = para.split("\n").map(l => l.trim()).filter(Boolean);
-
-        if (isHeading) {
+    <div style={{ fontFamily: "'Source Sans 3', sans-serif", fontSize: 14, lineHeight: 1.8, color: P.textSec }}>
+      {finalBlocks.map((para, i) => {
+        if (isHeading(para)) {
           return (
             <h3 key={i} style={{
-              fontSize: para.length < 60 ? 17 : 15,
+              fontSize: para.length < 50 ? 17 : 15,
               fontWeight: 700,
               color: P.red,
               fontFamily: "'Crimson Pro', serif",
-              margin: i === 0 ? "0 0 12px" : "24px 0 10px",
+              margin: i === 0 ? "0 0 12px" : "28px 0 10px",
               paddingBottom: 6,
               borderBottom: `1px solid ${P.borderLight}`,
+              letterSpacing: "0.02em",
             }}>
               {para}
             </h3>
           );
         }
 
-        if (isListItem || isNumberedItem) {
+        if (isListItem(para)) {
           return (
-            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, paddingLeft: 8 }}>
-              <span style={{ color: P.red, fontWeight: 600, flexShrink: 0 }}>
-                {isNumberedItem ? para.match(/^\d+[\.\)]/)[0] : "•"}
-              </span>
-              <span>{isNumberedItem ? para.replace(/^\d+[\.\)]\s*/, "") : para.replace(/^[\-•·▪►]\s*/, "")}</span>
+            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, paddingLeft: 12 }}>
+              <span style={{ color: P.red, fontWeight: 600, flexShrink: 0 }}>•</span>
+              <span>{para.replace(/^[\-•·▪►]\s*/, "")}</span>
             </div>
           );
         }
 
-        // Regular paragraph - handle sub-lines
+        if (isNumberedItem(para)) {
+          const numMatch = para.match(/^(\d+[\.\)])\s*/);
+          return (
+            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, paddingLeft: 8 }}>
+              <span style={{ color: P.red, fontWeight: 700, flexShrink: 0, minWidth: 22 }}>{numMatch[1]}</span>
+              <span>{para.replace(/^\d+[\.\)]\s*/, "")}</span>
+            </div>
+          );
+        }
+
+        // Check for sub-lines
+        const subLines = para.split("\n").map(l => l.trim()).filter(Boolean);
         if (subLines.length > 1) {
           return (
-            <div key={i} style={{ marginBottom: 12 }}>
+            <div key={i} style={{ marginBottom: 14 }}>
               {subLines.map((line, j) => {
-                const isSubList = /^[\-•·▪►]\s/.test(line) || /^[a-z]\)\s/i.test(line) || /^\d+[\.\)]\s/.test(line);
-                if (isSubList) {
+                if (isHeading(line)) {
                   return (
-                    <div key={j} style={{ display: "flex", gap: 8, marginBottom: 4, paddingLeft: 12 }}>
+                    <h4 key={j} style={{ fontSize: 14, fontWeight: 700, color: P.text, margin: "12px 0 6px" }}>
+                      {line}
+                    </h4>
+                  );
+                }
+                if (isListItem(line) || isNumberedItem(line)) {
+                  return (
+                    <div key={j} style={{ display: "flex", gap: 8, marginBottom: 4, paddingLeft: 14 }}>
                       <span style={{ color: P.redLight, flexShrink: 0, fontSize: 12 }}>•</span>
                       <span style={{ fontSize: 13 }}>{line.replace(/^[\-•·▪►\d]+[\.\)]*\s*/, "")}</span>
                     </div>
                   );
                 }
-                return <p key={j} style={{ margin: "2px 0" }}>{line}</p>;
+                return <p key={j} style={{ margin: "3px 0", textAlign: "justify" }}>{line}</p>;
               })}
             </div>
           );
@@ -103,7 +159,7 @@ function FormattedContent({ text, fullHeight }) {
 
         return (
           <p key={i} style={{
-            margin: "0 0 12px",
+            margin: "0 0 14px",
             textAlign: "justify",
             hyphens: "auto",
           }}>
@@ -477,7 +533,7 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
 
             {/* Modal content - full formatted text */}
             <div style={{ flex: 1, overflow: "auto", padding: "28px 36px" }}>
-              <FormattedContent text={extractedTexts[selectedMat.id].text} fullHeight />
+              <FormattedContent text={extractedTexts[selectedMat.id].text} />
             </div>
           </div>
         </div>
