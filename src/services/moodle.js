@@ -65,6 +65,64 @@ export async function getCourseCompletion(token, courseId, userId) {
   }
 }
 
+// ─── Forum & Announcements ──────────────────────────────────────
+
+/**
+ * Get all forums in a course (includes announcements/news forum)
+ */
+export async function getForumsByCourse(token, courseId) {
+  try {
+    return await moodleCall(token, "mod_forum_get_forums_by_courses", { courseids: [courseId] });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get discussions in a forum (paginated)
+ */
+export async function getForumDiscussions(token, forumId, page = 0, perPage = 25) {
+  try {
+    const result = await moodleCall(token, "mod_forum_get_forum_discussions", {
+      forumid: forumId,
+      sortorder: -1,
+      page,
+      perpage: perPage,
+    });
+    return result?.discussions || [];
+  } catch {
+    // Fallback to older API
+    try {
+      const result = await moodleCall(token, "mod_forum_get_forum_discussions_paginated", {
+        forumid: forumId,
+        sortby: "timemodified",
+        sortdirection: "DESC",
+        page,
+        perpage: perPage,
+      });
+      return result?.discussions || [];
+    } catch {
+      return [];
+    }
+  }
+}
+
+/**
+ * Get all posts in a discussion
+ */
+export async function getDiscussionPosts(token, discussionId) {
+  try {
+    const result = await moodleCall(token, "mod_forum_get_forum_discussion_posts", {
+      discussionid: discussionId,
+      sortby: "created",
+      sortdirection: "ASC",
+    });
+    return result?.posts || [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Download a file from Moodle (returns base64 content)
  */

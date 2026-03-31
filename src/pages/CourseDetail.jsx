@@ -3,10 +3,10 @@ import { P, ff } from "../styles/theme";
 import { CONFIG } from "../config";
 import { useApp } from "../context/AppContext";
 import { generateCourseSummary, generateQuiz, callAI } from "../services/ai";
-import { extractFileText, downloadFile } from "../services/moodle";
+import { extractFileText, downloadFile, getForumsByCourse, getForumDiscussions, getDiscussionPosts } from "../services/moodle";
 import { ensureDriveFolder, uploadMoodleFileToDrive, listDriveFolders, createDriveFolder } from "../services/google";
 import { Btn, RenderMarkdown } from "../components/UI";
-import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader, Maximize2, Minimize2, Type, FolderOpen, ChevronRight, Plus, ArrowLeft, FileSearch } from "lucide-react";
+import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader, Maximize2, Minimize2, Type, FolderOpen, ChevronRight, ChevronDown, Plus, ArrowLeft, FileSearch, MessageSquare, Megaphone, Users, Clock } from "lucide-react";
 
 const FILE_COLORS = {
   resource: { bg: "#FFEBEE", fg: "#B71C1C" },
@@ -449,6 +449,286 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
   );
 }
 
+/**
+ * Forums & Announcements section
+ */
+function ForumsSection({ forums, moodleToken, loading }) {
+  const [discussions, setDiscussions] = useState({}); // forumId -> discussions[]
+  const [posts, setPosts] = useState({}); // discussionId -> posts[]
+  const [loadingDisc, setLoadingDisc] = useState({});
+  const [loadingPosts, setLoadingPosts] = useState({});
+  const [expandedForum, setExpandedForum] = useState(null);
+  const [expandedDisc, setExpandedDisc] = useState(null);
+  const [aiSummary, setAiSummary] = useState(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+
+  const loadDiscussions = async (forumId) => {
+    if (discussions[forumId]) {
+      setExpandedForum(expandedForum === forumId ? null : forumId);
+      return;
+    }
+    setLoadingDisc(p => ({ ...p, [forumId]: true }));
+    setExpandedForum(forumId);
+    const discs = await getForumDiscussions(moodleToken, forumId);
+    setDiscussions(p => ({ ...p, [forumId]: discs }));
+    setLoadingDisc(p => ({ ...p, [forumId]: false }));
+  };
+
+  const loadPosts = async (discId) => {
+    if (posts[discId]) {
+      setExpandedDisc(expandedDisc === discId ? null : discId);
+      return;
+    }
+    setLoadingPosts(p => ({ ...p, [discId]: true }));
+    setExpandedDisc(discId);
+    const ps = await getDiscussionPosts(moodleToken, discId);
+    setPosts(p => ({ ...p, [discId]: ps }));
+    setLoadingPosts(p => ({ ...p, [discId]: false }));
+  };
+
+  const summarizeDiscussion = async (disc, discPosts) => {
+    setAiSummaryLoading(true);
+    setAiSummary(null);
+    const postsText = discPosts
+      .map(p => {
+        const author = p.userfullname || p.author?.fullname || "Anónimo";
+        const text = (p.message || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+        return `${author}: ${text}`;
+      })
+      .join("\n\n");
+    const prompt = `Resumí la siguiente discusión del foro "${disc.name || disc.subject}" de forma clara y organizada. Identificá los temas principales, las posturas de los participantes, y las conclusiones o acuerdos si los hay:\n\n${postsText.substring(0, 8000)}`;
+    const result = await callAI(prompt);
+    setAiSummary(result);
+    setAiSummaryLoading(false);
+  };
+
+  const summarizeForum = async (forum) => {
+    setAiSummaryLoading(true);
+    setAiSummary(null);
+    // Load all discussions if not loaded
+    let discs = discussions[forum.id];
+    if (!discs) {
+      discs = await getForumDiscussions(moodleToken, forum.id);
+      setDiscussions(p => ({ ...p, [forum.id]: discs }));
+    }
+    // Load posts for each discussion (first 5)
+    const allPostsText = [];
+    for (const disc of discs.slice(0, 5)) {
+      let ps = posts[disc.discussion || disc.id];
+      if (!ps) {
+        ps = await getDiscussionPosts(moodleToken, disc.discussion || disc.id);
+        setPosts(p => ({ ...p, [disc.discussion || disc.id]: ps }));
+      }
+      const discTitle = disc.name || disc.subject || "Sin título";
+      const postsStr = ps.map(p => {
+        const author = p.userfullname || p.author?.fullname || "Anónimo";
+        const text = (p.message || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+        return `  ${author}: ${text}`;
+      }).join("\n");
+      allPostsText.push(`--- ${discTitle} ---\n${postsStr}`);
+    }
+    const prompt = `Resumí todo lo discutido en el foro "${forum.name}" de forma clara y organizada. Identificá los temas principales, las ideas destacadas y los aportes más relevantes:\n\n${allPostsText.join("\n\n").substring(0, 10000)}`;
+    const result = await callAI(prompt);
+    setAiSummary(result);
+    setAiSummaryLoading(false);
+  };
+
+  const formatDate = (ts) => {
+    if (!ts) return "";
+    const d = new Date(ts * 1000);
+    return d.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
+  };
+
+  const stripHtml = (html) => (html || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+
+  if (loading) {
+    return (
+      <div style={{ background: P.card, borderRadius: 16, border: `1px solid ${P.border}`, padding: 20 }}>
+        <div className="shimmer" style={{ height: 20, width: "40%", marginBottom: 12 }} />
+        {[1, 2, 3].map(i => <div key={i} className="shimmer" style={{ height: 44, marginBottom: 8 }} />)}
+      </div>
+    );
+  }
+
+  if (!forums || forums.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <h2 style={{ fontFamily: ff.heading, fontSize: 20, fontWeight: 700, color: P.text, marginBottom: 14 }}>
+        Foros y Avisos
+      </h2>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {forums.map(forum => {
+          const isNews = forum.type === "news";
+          const isExpanded = expandedForum === forum.id;
+          const forumDiscs = discussions[forum.id] || [];
+
+          return (
+            <div key={forum.id} style={{ background: P.card, borderRadius: 14, border: `1px solid ${P.border}`, overflow: "hidden" }}>
+              {/* Forum header */}
+              <button onClick={() => loadDiscussions(forum.id)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 12,
+                  padding: "14px 18px", background: "none", border: "none", cursor: "pointer", textAlign: "left",
+                }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                  background: isNews ? "#FEF3C7" : "#E0E7FF",
+                  color: isNews ? "#D97706" : "#4F46E5",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {isNews ? <Megaphone size={18} /> : <MessageSquare size={18} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: P.text }}>{forum.name}</div>
+                  {forum.intro && (
+                    <div style={{ fontSize: 12, color: P.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {stripHtml(forum.intro).substring(0, 100)}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  {forum.numdiscussions != null && (
+                    <span style={{ fontSize: 11, color: P.textMuted, background: P.borderLight, padding: "2px 8px", borderRadius: 6, fontWeight: 600 }}>
+                      {forum.numdiscussions} {forum.numdiscussions === 1 ? "tema" : "temas"}
+                    </span>
+                  )}
+                  {isExpanded ? <ChevronDown size={16} style={{ color: P.textMuted }} /> : <ChevronRight size={16} style={{ color: P.textMuted }} />}
+                </div>
+              </button>
+
+              {/* Discussions list */}
+              {isExpanded && (
+                <div style={{ borderTop: `1px solid ${P.borderLight}` }}>
+                  {loadingDisc[forum.id] ? (
+                    <div style={{ padding: 16, textAlign: "center", color: P.textMuted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                      <div style={{ width: 14, height: 14, border: `2px solid ${P.redMuted}`, borderTopColor: P.red, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                      Cargando discusiones...
+                    </div>
+                  ) : forumDiscs.length === 0 ? (
+                    <div style={{ padding: 16, textAlign: "center", color: P.textMuted, fontSize: 13 }}>
+                      No hay discusiones en este foro
+                    </div>
+                  ) : (
+                    <>
+                      {/* Summarize entire forum button */}
+                      <div style={{ padding: "8px 18px", borderBottom: `1px solid ${P.borderLight}` }}>
+                        <button onClick={() => summarizeForum(forum)} disabled={aiSummaryLoading}
+                          style={{ padding: "5px 12px", borderRadius: 6, background: P.redSoft, color: P.red, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, opacity: aiSummaryLoading ? 0.5 : 1 }}>
+                          <Sparkles size={12} /> Resumir todo el foro con IA
+                        </button>
+                      </div>
+
+                      {forumDiscs.map(disc => {
+                        const discId = disc.discussion || disc.id;
+                        const isDiscExpanded = expandedDisc === discId;
+                        const discPosts = posts[discId] || [];
+                        const author = disc.userfullname || disc.firstname ? `${disc.firstname || ""} ${disc.lastname || ""}`.trim() : "Anónimo";
+
+                        return (
+                          <div key={discId}>
+                            <button onClick={() => loadPosts(discId)}
+                              style={{
+                                width: "100%", display: "flex", alignItems: "center", gap: 10,
+                                padding: "10px 18px", background: isDiscExpanded ? `${P.cream}` : "transparent",
+                                border: "none", borderBottom: `1px solid ${P.borderLight}`, cursor: "pointer", textAlign: "left",
+                              }}
+                              onMouseEnter={e => { if (!isDiscExpanded) e.currentTarget.style.background = P.cream; }}
+                              onMouseLeave={e => { if (!isDiscExpanded) e.currentTarget.style.background = "transparent"; }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 500, color: P.text }}>{disc.name || disc.subject}</div>
+                                <div style={{ fontSize: 11, color: P.textMuted, display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                                  <Users size={10} /> {author}
+                                  {disc.numreplies != null && <span>· {disc.numreplies} respuestas</span>}
+                                  <Clock size={10} style={{ marginLeft: 4 }} /> {formatDate(disc.timemodified || disc.created)}
+                                </div>
+                              </div>
+                              {isDiscExpanded ? <ChevronDown size={14} style={{ color: P.textMuted }} /> : <ChevronRight size={14} style={{ color: P.textMuted }} />}
+                            </button>
+
+                            {/* Posts */}
+                            {isDiscExpanded && (
+                              <div style={{ background: P.bg, borderBottom: `1px solid ${P.borderLight}` }}>
+                                {loadingPosts[discId] ? (
+                                  <div style={{ padding: 14, textAlign: "center", color: P.textMuted, fontSize: 12 }}>Cargando mensajes...</div>
+                                ) : (
+                                  <>
+                                    {/* AI summarize button */}
+                                    {discPosts.length > 1 && (
+                                      <div style={{ padding: "8px 24px" }}>
+                                        <button onClick={() => summarizeDiscussion(disc, discPosts)} disabled={aiSummaryLoading}
+                                          style={{ padding: "4px 10px", borderRadius: 5, background: P.redSoft, color: P.red, fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, opacity: aiSummaryLoading ? 0.5 : 1 }}>
+                                          <Sparkles size={10} /> Resumir discusión
+                                        </button>
+                                      </div>
+                                    )}
+                                    {discPosts.map((post, pi) => {
+                                      const postAuthor = post.userfullname || post.author?.fullname || "Anónimo";
+                                      const postDate = formatDate(post.created || post.timecreated);
+                                      const postText = stripHtml(post.message);
+                                      return (
+                                        <div key={post.id || pi} className="slide-in"
+                                          style={{
+                                            animationDelay: `${pi * 0.04}s`,
+                                            padding: "12px 24px", borderBottom: `1px solid ${P.borderLight}`,
+                                            marginLeft: pi > 0 ? 16 : 0,
+                                          }}>
+                                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                            <div style={{
+                                              width: 26, height: 26, borderRadius: 7,
+                                              background: pi === 0 ? P.redSoft : "#E0E7FF",
+                                              color: pi === 0 ? P.red : "#4F46E5",
+                                              display: "flex", alignItems: "center", justifyContent: "center",
+                                              fontSize: 11, fontWeight: 700,
+                                            }}>
+                                              {postAuthor.charAt(0).toUpperCase()}
+                                            </div>
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: P.text }}>{postAuthor}</span>
+                                            <span style={{ fontSize: 11, color: P.textMuted }}>{postDate}</span>
+                                          </div>
+                                          <div style={{ fontSize: 13, lineHeight: 1.6, color: P.textSec, paddingLeft: 34 }}>
+                                            {postText.substring(0, 500)}
+                                            {postText.length > 500 && "..."}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* AI Summary result */}
+      {(aiSummaryLoading || aiSummary) && (
+        <div style={{ marginTop: 16, background: P.card, borderRadius: 16, border: `1px solid ${P.border}`, overflow: "hidden" }}>
+          <div style={{ padding: "14px 18px", borderBottom: `1px solid ${P.borderLight}`, display: "flex", alignItems: "center", gap: 8 }}>
+            <Sparkles size={16} style={{ color: P.red }} />
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: P.text }}>Resumen del foro</h3>
+            <button onClick={() => setAiSummary(null)} style={{ marginLeft: "auto", background: "none", border: "none", color: P.textMuted, cursor: "pointer", fontSize: 16 }}>✕</button>
+          </div>
+          <div style={{ padding: "14px 18px", maxHeight: 400, overflow: "auto" }}>
+            {aiSummaryLoading ? (
+              <div>{[1, 2, 3, 4].map(i => <div key={i} className="shimmer" style={{ height: i === 1 ? 22 : 16, marginBottom: 10, width: `${60 + Math.random() * 40}%` }} />)}</div>
+            ) : <RenderMarkdown text={aiSummary} />}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CourseDetail({ course, onBack, onNavigateChat, onNavigateQuiz }) {
   const { loadCourseMaterials, googleAccessToken, moodleToken } = useApp();
   const [materials, setMaterials] = useState(null);
@@ -465,6 +745,10 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
   const [pdfViewerMat, setPdfViewerMat] = useState(null); // material being viewed as PDF
   const [pdfLoading, setPdfLoading] = useState(false);
 
+  // Forum state
+  const [forums, setForums] = useState(null);
+  const [forumsLoading, setForumsLoading] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     setMatLoading(true);
@@ -473,6 +757,19 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
     });
     return () => { cancelled = true; };
   }, [course.id, loadCourseMaterials]);
+
+  // Load forums for this course
+  const loadForums = useCallback(async () => {
+    if (!moodleToken || moodleToken === "mock_token") return;
+    setForumsLoading(true);
+    try {
+      const forumList = await getForumsByCourse(moodleToken, course.id);
+      setForums(Array.isArray(forumList) ? forumList : []);
+    } catch { setForums([]); }
+    setForumsLoading(false);
+  }, [moodleToken, course.id]);
+
+  useEffect(() => { loadForums(); }, [loadForums]);
 
   // Extract text from a file
   const extractText = async (mat) => {
@@ -777,6 +1074,9 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
           </div>
         )}
       </div>
+
+      {/* ── Forums & Announcements ── */}
+      <ForumsSection forums={forums} moodleToken={moodleToken} loading={forumsLoading} />
 
       {/* ── Full-screen expanded content viewer ── */}
       {expandedView && selectedMat && extractedTexts[selectedMat.id]?.text && (
