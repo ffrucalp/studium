@@ -5,7 +5,7 @@ import { generateCourseSummary, generateQuiz, callAI } from "../services/ai";
 import { extractFileText } from "../services/moodle";
 import { ensureDriveFolder, uploadMoodleFileToDrive } from "../services/google";
 import { Btn, RenderMarkdown } from "../components/UI";
-import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader } from "lucide-react";
+import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader, Maximize2, Minimize2, Type } from "lucide-react";
 
 const FILE_COLORS = {
   resource: { bg: "#FFEBEE", fg: "#B71C1C" },
@@ -24,6 +24,97 @@ function fileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Formats plain extracted text into styled HTML paragraphs
+ */
+function FormattedContent({ text, fullHeight }) {
+  if (!text) return null;
+
+  // Split into paragraphs (double newline or single newline with indent/caps change)
+  const paragraphs = text
+    .replace(/\r\n?/g, "\n")
+    .split(/\n{2,}/)
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  return (
+    <div style={{ fontFamily: "'Source Sans 3', sans-serif", fontSize: 14, lineHeight: 1.75, color: P.textSec }}>
+      {paragraphs.map((para, i) => {
+        // Detect if it looks like a heading (short, no period at end, possibly all caps or starts with number.)
+        const isHeading = para.length < 120 && !para.endsWith(".") && !para.endsWith(",") && (
+          /^[A-ZÁÉÍÓÚÑÜ\s\d.:–\-]+$/.test(para) ||
+          /^\d+[\.\)\-]\s/.test(para) ||
+          /^(CAPÍTULO|UNIDAD|TEMA|MÓDULO|SECCIÓN|PARTE|INTRODUCCIÓN|CONCLUSIÓN|BIBLIOGRAFÍA|RESUMEN)/i.test(para)
+        );
+
+        // Detect if it looks like a list item
+        const isListItem = /^[\-•·▪►]\s/.test(para) || /^[a-z]\)\s/i.test(para);
+        const isNumberedItem = /^\d+[\.\)]\s/.test(para) && para.length < 300;
+
+        // Detect sub-lines within the paragraph
+        const subLines = para.split("\n").map(l => l.trim()).filter(Boolean);
+
+        if (isHeading) {
+          return (
+            <h3 key={i} style={{
+              fontSize: para.length < 60 ? 17 : 15,
+              fontWeight: 700,
+              color: P.red,
+              fontFamily: "'Crimson Pro', serif",
+              margin: i === 0 ? "0 0 12px" : "24px 0 10px",
+              paddingBottom: 6,
+              borderBottom: `1px solid ${P.borderLight}`,
+            }}>
+              {para}
+            </h3>
+          );
+        }
+
+        if (isListItem || isNumberedItem) {
+          return (
+            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, paddingLeft: 8 }}>
+              <span style={{ color: P.red, fontWeight: 600, flexShrink: 0 }}>
+                {isNumberedItem ? para.match(/^\d+[\.\)]/)[0] : "•"}
+              </span>
+              <span>{isNumberedItem ? para.replace(/^\d+[\.\)]\s*/, "") : para.replace(/^[\-•·▪►]\s*/, "")}</span>
+            </div>
+          );
+        }
+
+        // Regular paragraph - handle sub-lines
+        if (subLines.length > 1) {
+          return (
+            <div key={i} style={{ marginBottom: 12 }}>
+              {subLines.map((line, j) => {
+                const isSubList = /^[\-•·▪►]\s/.test(line) || /^[a-z]\)\s/i.test(line) || /^\d+[\.\)]\s/.test(line);
+                if (isSubList) {
+                  return (
+                    <div key={j} style={{ display: "flex", gap: 8, marginBottom: 4, paddingLeft: 12 }}>
+                      <span style={{ color: P.redLight, flexShrink: 0, fontSize: 12 }}>•</span>
+                      <span style={{ fontSize: 13 }}>{line.replace(/^[\-•·▪►\d]+[\.\)]*\s*/, "")}</span>
+                    </div>
+                  );
+                }
+                return <p key={j} style={{ margin: "2px 0" }}>{line}</p>;
+              })}
+            </div>
+          );
+        }
+
+        return (
+          <p key={i} style={{
+            margin: "0 0 12px",
+            textAlign: "justify",
+            hyphens: "auto",
+          }}>
+            {para}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CourseDetail({ course, onBack, onNavigateChat, onNavigateQuiz }) {
   const { loadCourseMaterials, googleAccessToken, moodleToken } = useApp();
   const [materials, setMaterials] = useState(null);
@@ -35,6 +126,7 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
   const [selectedMat, setSelectedMat] = useState(null); // material being viewed
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
+  const [expandedView, setExpandedView] = useState(false); // full-screen content view
 
   useEffect(() => {
     let cancelled = false;
@@ -253,11 +345,23 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
             {selectedMat && extractedTexts[selectedMat.id]?.text && (
               <div style={{ background: P.card, borderRadius: 16, border: `1px solid ${P.border}`, overflow: "hidden" }}>
                 <div style={{ padding: "14px 18px", borderBottom: `1px solid ${P.borderLight}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <h3 style={{ fontSize: 14, fontWeight: 700, color: P.text }}>{selectedMat.name}</h3>
-                    <span style={{ fontSize: 11, color: P.textMuted }}>{extractedTexts[selectedMat.id].chars} caracteres extraídos</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: P.redSoft, display: "flex", alignItems: "center", justifyContent: "center", color: P.red, flexShrink: 0 }}>
+                      <FileText size={16} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <h3 style={{ fontSize: 14, fontWeight: 700, color: P.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedMat.name}</h3>
+                      <span style={{ fontSize: 11, color: P.textMuted }}>{extractedTexts[selectedMat.id].chars.toLocaleString()} caracteres</span>
+                    </div>
                   </div>
-                  <button onClick={() => setSelectedMat(null)} style={{ background: "none", border: "none", color: P.textMuted, cursor: "pointer", fontSize: 16 }}>✕</button>
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <button onClick={() => setExpandedView(true)} title="Ver completo"
+                      style={{ width: 30, height: 30, borderRadius: 8, background: P.cream, color: P.red, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}>
+                      <Maximize2 size={14} />
+                    </button>
+                    <button onClick={() => setSelectedMat(null)}
+                      style={{ width: 30, height: 30, borderRadius: 8, background: P.borderLight, color: P.textMuted, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}>✕</button>
+                  </div>
                 </div>
 
                 {/* AI action buttons for this file */}
@@ -276,10 +380,9 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
                   ))}
                 </div>
 
-                {/* File text content preview */}
-                <div style={{ padding: "12px 18px", maxHeight: 200, overflow: "auto", fontSize: 12, lineHeight: 1.6, color: P.textSec, background: P.bg, fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                  {extractedTexts[selectedMat.id].text.substring(0, 2000)}
-                  {extractedTexts[selectedMat.id].text.length > 2000 && "\n\n... (contenido truncado)"}
+                {/* Formatted file content preview */}
+                <div style={{ padding: "20px 24px", maxHeight: 400, overflow: "auto", background: P.bg }}>
+                  <FormattedContent text={extractedTexts[selectedMat.id].text} />
                 </div>
               </div>
             )}
@@ -317,6 +420,68 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
           </div>
         )}
       </div>
+
+      {/* ── Full-screen expanded content viewer ── */}
+      {expandedView && selectedMat && extractedTexts[selectedMat.id]?.text && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 20,
+        }}
+        onClick={(e) => { if (e.target === e.currentTarget) setExpandedView(false); }}>
+          <div style={{
+            background: P.card, borderRadius: 20,
+            width: "100%", maxWidth: 820, maxHeight: "90vh",
+            display: "flex", flexDirection: "column",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+            overflow: "hidden",
+          }}>
+            {/* Modal header */}
+            <div style={{
+              padding: "18px 24px", borderBottom: `1px solid ${P.borderLight}`,
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              background: P.cream, flexShrink: 0,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: P.redSoft, display: "flex", alignItems: "center", justifyContent: "center", color: P.red, flexShrink: 0 }}>
+                  <FileText size={18} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, color: P.text, fontFamily: "'Crimson Pro', serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {selectedMat.name}
+                  </h2>
+                  <span style={{ fontSize: 12, color: P.textMuted }}>
+                    {extractedTexts[selectedMat.id].chars.toLocaleString()} caracteres · {selectedMat.section}
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                {/* AI buttons in modal */}
+                {[
+                  { label: "Resumir", prompt: "Haceme un resumen claro y organizado del siguiente contenido:" },
+                  { label: "Conceptos clave", prompt: "Extraé los conceptos clave y definiciones del siguiente contenido:" },
+                  { label: "Preguntas", prompt: "Generame 5 preguntas de repaso sobre el siguiente contenido:" },
+                ].map((action, i) => (
+                  <button key={i} onClick={() => { setExpandedView(false); analyzeWithAI(selectedMat, action.prompt); }}
+                    style={{ padding: "6px 12px", borderRadius: 8, background: P.redSoft, color: P.red, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>
+                    {action.label}
+                  </button>
+                ))}
+                <button onClick={() => setExpandedView(false)}
+                  style={{ width: 34, height: 34, borderRadius: 10, background: P.borderLight, color: P.textMuted, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", fontSize: 18 }}>
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal content - full formatted text */}
+            <div style={{ flex: 1, overflow: "auto", padding: "28px 36px" }}>
+              <FormattedContent text={extractedTexts[selectedMat.id].text} fullHeight />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
