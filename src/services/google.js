@@ -214,3 +214,31 @@ export async function listDriveFiles(accessToken, folderId) {
   if (data.error) throw new Error(data.error);
   return data.files;
 }
+
+/**
+ * List only folders in Drive (for folder picker)
+ */
+export async function listDriveFolders(accessToken, folderId = null) {
+  const res = await fetch(`${API_BASE}/api/google/drive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_token: accessToken, action: "listFolders", folderId }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.folders;
+}
+
+/**
+ * Create a new folder in Drive
+ */
+export async function createDriveFolder(accessToken, folderName, parentFolderId = null) {
+  const res = await fetch(`${API_BASE}/api/google/drive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_token: accessToken, action: "createFolder", folderName, folderId: parentFolderId }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.folder;
+}

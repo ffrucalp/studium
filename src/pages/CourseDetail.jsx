@@ -3,9 +3,9 @@ import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
 import { generateCourseSummary, generateQuiz, callAI } from "../services/ai";
 import { extractFileText } from "../services/moodle";
-import { ensureDriveFolder, uploadMoodleFileToDrive } from "../services/google";
+import { ensureDriveFolder, uploadMoodleFileToDrive, listDriveFolders, createDriveFolder } from "../services/google";
 import { Btn, RenderMarkdown } from "../components/UI";
-import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader, Maximize2, Minimize2, Type } from "lucide-react";
+import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader, Maximize2, Minimize2, Type, FolderOpen, ChevronRight, Plus, ArrowLeft } from "lucide-react";
 
 const FILE_COLORS = {
   resource: { bg: "#FFEBEE", fg: "#B71C1C" },
@@ -171,6 +171,157 @@ function FormattedContent({ text }) {
   );
 }
 
+/**
+ * Google Drive folder picker modal
+ */
+function FolderPicker({ accessToken, fileName, onSelect, onClose }) {
+  const [folders, setFolders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [currentFolderId, setCurrentFolderId] = useState(null); // null = root
+  const [breadcrumb, setBreadcrumb] = useState([{ id: null, name: "Mi Drive" }]);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [showNewFolder, setShowNewFolder] = useState(false);
+
+  // Load folders when navigating
+  useEffect(() => {
+    setLoading(true);
+    listDriveFolders(accessToken, currentFolderId)
+      .then(f => { setFolders(f || []); setLoading(false); })
+      .catch(() => { setFolders([]); setLoading(false); });
+  }, [accessToken, currentFolderId]);
+
+  const navigateInto = (folder) => {
+    setCurrentFolderId(folder.id);
+    setBreadcrumb(prev => [...prev, { id: folder.id, name: folder.name }]);
+  };
+
+  const navigateTo = (index) => {
+    const target = breadcrumb[index];
+    setCurrentFolderId(target.id);
+    setBreadcrumb(prev => prev.slice(0, index + 1));
+  };
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    setCreating(true);
+    try {
+      const folder = await createDriveFolder(accessToken, newFolderName.trim(), currentFolderId);
+      setFolders(prev => [...prev, folder].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewFolderName("");
+      setShowNewFolder(false);
+    } catch {}
+    setCreating(false);
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(0,0,0,0.45)", backdropFilter: "blur(3px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    }}
+    onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{
+        background: P.card, borderRadius: 18, width: "100%", maxWidth: 500,
+        maxHeight: "70vh", display: "flex", flexDirection: "column",
+        boxShadow: "0 16px 48px rgba(0,0,0,0.25)", overflow: "hidden",
+      }}>
+        {/* Header */}
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${P.borderLight}`, background: P.cream }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <HardDrive size={18} style={{ color: P.red }} />
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: P.text }}>Guardar en Google Drive</h3>
+            </div>
+            <button onClick={onClose}
+              style={{ width: 28, height: 28, borderRadius: 8, background: P.borderLight, color: P.textMuted, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}>✕</button>
+          </div>
+          <div style={{ fontSize: 12, color: P.textMuted, background: P.bg, padding: "6px 10px", borderRadius: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <FileText size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
+            {fileName}
+          </div>
+        </div>
+
+        {/* Breadcrumb */}
+        <div style={{ padding: "10px 20px", borderBottom: `1px solid ${P.borderLight}`, display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", fontSize: 12 }}>
+          {breadcrumb.map((crumb, i) => (
+            <span key={i} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+              {i > 0 && <ChevronRight size={12} style={{ color: P.textMuted }} />}
+              <button onClick={() => navigateTo(i)}
+                style={{ background: "none", border: "none", color: i === breadcrumb.length - 1 ? P.red : P.textMuted, fontWeight: i === breadcrumb.length - 1 ? 700 : 400, cursor: "pointer", fontSize: 12, padding: "2px 4px", borderRadius: 4 }}
+                onMouseEnter={e => e.currentTarget.style.background = P.cream}
+                onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                {crumb.name}
+              </button>
+            </span>
+          ))}
+        </div>
+
+        {/* Folder list */}
+        <div style={{ flex: 1, overflow: "auto", padding: "8px 12px", minHeight: 200 }}>
+          {loading ? (
+            <div style={{ padding: 30, textAlign: "center", color: P.textMuted, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <div style={{ width: 14, height: 14, border: `2px solid ${P.redMuted}`, borderTopColor: P.red, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              Cargando carpetas...
+            </div>
+          ) : (
+            <>
+              {folders.length === 0 && (
+                <div style={{ padding: 20, textAlign: "center", color: P.textMuted, fontSize: 13 }}>
+                  No hay subcarpetas acá
+                </div>
+              )}
+              {folders.map(folder => (
+                <button key={folder.id} onClick={() => navigateInto(folder)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10,
+                    padding: "10px 12px", borderRadius: 8, border: "none", background: "transparent",
+                    cursor: "pointer", textAlign: "left", fontSize: 13, color: P.text,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = P.cream}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <FolderOpen size={18} style={{ color: "#FBBC05", flexShrink: 0 }} />
+                  <span style={{ fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{folder.name}</span>
+                  <ChevronRight size={14} style={{ color: P.textMuted, flexShrink: 0 }} />
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* New folder */}
+        {showNewFolder && (
+          <div style={{ padding: "10px 20px", borderTop: `1px solid ${P.borderLight}`, display: "flex", gap: 8 }}>
+            <input value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleCreateFolder()}
+              placeholder="Nombre de la carpeta"
+              autoFocus
+              style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: `1px solid ${P.border}`, fontSize: 13, outline: "none" }} />
+            <button onClick={handleCreateFolder} disabled={creating || !newFolderName.trim()}
+              style={{ padding: "8px 14px", borderRadius: 8, background: P.red, color: "#fff", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", opacity: creating ? 0.6 : 1 }}>
+              {creating ? "..." : "Crear"}
+            </button>
+            <button onClick={() => { setShowNewFolder(false); setNewFolderName(""); }}
+              style={{ padding: "8px 10px", borderRadius: 8, background: P.borderLight, color: P.textMuted, fontSize: 12, border: "none", cursor: "pointer" }}>✕</button>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ padding: "14px 20px", borderTop: `1px solid ${P.borderLight}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: P.bg }}>
+          <button onClick={() => setShowNewFolder(true)}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, background: "transparent", color: P.textSec, fontSize: 12, fontWeight: 600, border: `1px solid ${P.border}`, cursor: "pointer" }}>
+            <Plus size={14} /> Nueva carpeta
+          </button>
+          <button onClick={() => onSelect(currentFolderId)}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 20px", borderRadius: 8, background: P.red, color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer" }}>
+            <HardDrive size={14} /> Guardar aquí
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CourseDetail({ course, onBack, onNavigateChat, onNavigateQuiz }) {
   const { loadCourseMaterials, googleAccessToken, moodleToken } = useApp();
   const [materials, setMaterials] = useState(null);
@@ -183,6 +334,7 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
   const [expandedView, setExpandedView] = useState(false); // full-screen content view
+  const [folderPickerMat, setFolderPickerMat] = useState(null); // material awaiting folder selection
 
   useEffect(() => {
     let cancelled = false;
@@ -259,13 +411,15 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
   };
 
   // Save to Drive
-  const saveFileToDrive = async (mat) => {
+  // Save to Drive (with specific folder from picker)
+  const saveFileToDrive = async (mat, selectedFolderId = null) => {
     if (!googleAccessToken || !moodleToken) return;
     const file = mat.files?.[0];
     if (!file?.fileurl) return;
     setSavedFiles(prev => ({ ...prev, [mat.id]: { saving: true } }));
+    setFolderPickerMat(null);
     try {
-      const folderId = await ensureDriveFolder(googleAccessToken);
+      const folderId = selectedFolderId || await ensureDriveFolder(googleAccessToken);
       const result = await uploadMoodleFileToDrive(googleAccessToken, {
         fileUrl: file.fileurl, fileName: file.filename || mat.name,
         moodleToken, folderId,
@@ -380,7 +534,7 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
                       </button>
                     )}
                     {googleAccessToken && hasFile && (
-                      <button onClick={(e) => { e.stopPropagation(); saveFileToDrive(mat); }}
+                      <button onClick={(e) => { e.stopPropagation(); setFolderPickerMat(mat); }}
                         disabled={savedFiles[mat.id]?.saving}
                         title={savedFiles[mat.id]?.saved ? "Guardado en Drive" : "Guardar en Drive"}
                         style={{ width: 28, height: 28, borderRadius: 6, background: savedFiles[mat.id]?.saved ? "#DCFCE7" : "#F3E8FF", color: savedFiles[mat.id]?.saved ? "#16A34A" : "#7C3AED", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", opacity: savedFiles[mat.id]?.saving ? 0.5 : 1 }}>
@@ -537,6 +691,16 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Folder Picker Modal ── */}
+      {folderPickerMat && googleAccessToken && (
+        <FolderPicker
+          accessToken={googleAccessToken}
+          fileName={folderPickerMat.files?.[0]?.filename || folderPickerMat.name}
+          onSelect={(folderId) => saveFileToDrive(folderPickerMat, folderId)}
+          onClose={() => setFolderPickerMat(null)}
+        />
       )}
     </div>
   );

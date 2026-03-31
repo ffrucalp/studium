@@ -1,8 +1,27 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { getMoodleToken, getSiteInfo, getUserCourses, getCourseContents, assignCourseColor, parseCourseContents } from "../services/moodle";
 import { zonaLogin, zonaGetProfile } from "../services/zona";
+import { refreshToken } from "../services/google";
 
 const AppContext = createContext(null);
+
+// ─── localStorage helpers ────────────────────────────────────────
+const STORAGE_KEY = "studium_session";
+
+function saveSession(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function clearSession() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}
 
 // ─── Mock data ────────────────────────────────────────────────────
 const MOCK_COURSES = [
@@ -25,23 +44,46 @@ export const MOCK_MATERIALS = [
 ];
 
 export function AppProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [moodleToken, setMoodleToken] = useState(null);
-  const [moodleUserId, setMoodleUserId] = useState(null);
-  const [courses, setCourses] = useState([]);
+  // Restore session from localStorage
+  const saved = useRef(loadSession()).current;
+
+  const [user, setUser] = useState(saved?.user || null);
+  const [moodleToken, setMoodleToken] = useState(saved?.moodleToken || null);
+  const [moodleUserId, setMoodleUserId] = useState(saved?.moodleUserId || null);
+  const [courses, setCourses] = useState(saved?.courses || []);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [courseMaterials, setCourseMaterials] = useState({});
-  const [useMock, setUseMock] = useState(false);
+  const [useMock, setUseMock] = useState(saved?.useMock || false);
 
   // Zona Interactiva state
-  const [zonaSession, setZonaSession] = useState(null);
-  const [zonaStudent, setZonaStudent] = useState(null);
+  const [zonaSession, setZonaSession] = useState(saved?.zonaSession || null);
+  const [zonaStudent, setZonaStudent] = useState(saved?.zonaStudent || null);
   const [zonaProfile, setZonaProfile] = useState(null);
   const [zonaLoading, setZonaLoading] = useState(false);
 
   // Google tokens
-  const [googleAccessToken, setGoogleAccessToken] = useState(null);
-  const [googleRefreshToken, setGoogleRefreshToken] = useState(null);
+  const [googleAccessToken, setGoogleAccessToken] = useState(saved?.googleAccessToken || null);
+  const [googleRefreshToken, setGoogleRefreshToken] = useState(saved?.googleRefreshToken || null);
+
+  // ── Persist session to localStorage on key changes ──
+  useEffect(() => {
+    if (!user) return;
+    saveSession({
+      user, moodleToken, moodleUserId, courses, useMock,
+      zonaSession, zonaStudent,
+      googleAccessToken, googleRefreshToken,
+    });
+  }, [user, moodleToken, moodleUserId, courses, useMock, zonaSession, zonaStudent, googleAccessToken, googleRefreshToken]);
+
+  // ── Auto-refresh Google token on restore ──
+  useEffect(() => {
+    if (googleRefreshToken && !googleAccessToken && user) {
+      // Token expired on reload — try refreshing
+      refreshToken(googleRefreshToken)
+        .then(data => { if (data.access_token) setGoogleAccessToken(data.access_token); })
+        .catch(() => { /* silently fail, user can re-auth */ });
+    }
+  }, []); // only on mount
 
   // ── Google OAuth Login ──
   const loginWithGoogle = useCallback((userData) => {
@@ -181,6 +223,7 @@ export function AppProvider({ children }) {
     setZonaProfile(null);
     setGoogleAccessToken(null);
     setGoogleRefreshToken(null);
+    clearSession();
   }, []);
 
   return (
