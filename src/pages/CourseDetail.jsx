@@ -361,7 +361,7 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
           });
           adobeDCView.previewFile({
             content: { promise: Promise.resolve(bytes.buffer) },
-            metaData: { fileName: file.filename || mat.name },
+            metaData: { fileName: file.filename || mat.name, id: String(mat.id) },
           }, {
             embedMode: "FULL_WINDOW",
             showAnnotationTools: true,
