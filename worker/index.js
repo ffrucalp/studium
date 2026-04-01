@@ -1029,9 +1029,21 @@ function decodePDFString(s) {
 // ═══════════════════════════════════════════════════════════════════
 
 async function aiProxy(body, env) {
-  const { prompt, systemPrompt, model } = body;
+  const { prompt, systemPrompt, model, images } = body;
   if (!prompt) return json({ error: "Falta el prompt" }, 400, env);
   if (!env.OPENROUTER_API_KEY) return json({ error: "API key no configurada" }, 500, env);
+
+  // Build user content (text-only or multimodal with images)
+  let userContent;
+  if (images && images.length > 0) {
+    userContent = [
+      { type: "text", text: prompt },
+      ...images.map(img => ({ type: "image_url", image_url: { url: img } })),
+    ];
+  } else {
+    userContent = prompt;
+  }
+
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -1045,7 +1057,7 @@ async function aiProxy(body, env) {
       max_tokens: 8192,
       messages: [
         { role: "system", content: systemPrompt || "Sos un tutor universitario experto de la Lic. en Gobernanza de Datos de la UCALP. Respondé en español rioplatense con voseo." },
-        { role: "user", content: prompt },
+        { role: "user", content: userContent },
       ],
     }),
   });
@@ -1315,6 +1327,446 @@ function mergeCookies(a, b) {
 
 
 // ═══════════════════════════════════════════════════════════════════
+// BIBLIO UCALP - Catálogo de Biblioteca
+// ═══════════════════════════════════════════════════════════════════
+
+const BIBLIO_URL = "https://biblio.ucalp.edu.ar";
+
+/**
+ * Search the UCALP library catalog (biblio.ucalp.edu.ar)
+ * body: { query, page?, type?, field?, sucursal? }
+ *   query: search term
+ *   page: page number (default 1)
+ *   type: "simple" | "avanzado" (default "simple")
+ *   field: for advanced - "13" (titulo), "12" (apellido autor), "18" (nombre autor), "14" (tema)
+ *   sucursal: library branch id (default "0" = all)
+ */
+async function biblioSearch(body, env) {
+  const { query, page = 1, type = "simple", field = "13", sucursal = "0" } = body;
+  if (!query || query.trim().length < 2) return json({ error: "Búsqueda muy corta" }, 400, env);
+
+  // Build form data
+  const params = new URLSearchParams();
+  params.append("page", String(page));
+
+  if (type === "simple") {
+    params.append("filters[valor_simple]", query);
+    params.append("filters[tipo_busqueda]", "simple");
+  } else {
+    params.append("filters[custom][0][caracteristica]", field);
+    params.append("filters[custom][0][valor]", query);
+    params.append("filters[custom][0][logico]", "INTERSECT");
+    params.append("filters[sucursal]", sucursal);
+    params.append("filters[tipo_doc]", "0");
+    params.append("filters[formato]", "0");
+    params.append("filters[tipo_busqueda]", "avanzado");
+  }
+
+  try {
+    const res = await fetch(`${BIBLIO_URL}/index.php/ct_documento/buscar/action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "text/html, */*",
+        "User-Agent": "Studium/1.0",
+        "Referer": `${BIBLIO_URL}/`,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: params.toString(),
+    });
+
+    // The response is ISO-8859-1 encoded HTML
+    const buffer = await res.arrayBuffer();
+    const decoder = new TextDecoder("iso-8859-1");
+    const html = decoder.decode(buffer);
+
+    // Parse the HTML table to extract book results
+    const books = parseBiblioResults(html);
+
+    // Try to extract pagination info
+    const totalMatch = html.match(/(\d+)\s*resultado/i);
+    const total = totalMatch ? parseInt(totalMatch[1]) : books.length;
+
+    return json({
+      books,
+      total,
+      page,
+      query,
+      hasMore: books.length >= 10,
+    }, 200, env);
+
+  } catch (err) {
+    return json({ error: "Error al consultar catálogo", details: err.message }, 500, env);
+  }
+}
+
+/**
+ * Parse the HTML response from biblio.ucalp.edu.ar
+ * Extracts rows from the results table
+ */
+function parseBiblioResults(html) {
+  const books = [];
+  if (!html || html.trim().length === 0) return books;
+
+  // The results come in a table with headers: Titulo, Autor, Datos publicacion, Signatura topografica, Cant. ej. disponibles
+  // Match each <tr> that contains <td> elements (skip header <th> rows)
+  const rowRegex = /<tr[^>]*>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
+
+  let match;
+  while ((match = rowRegex.exec(html)) !== null) {
+    const title = stripTags(match[1]).trim();
+    const author = stripTags(match[2]).trim();
+    const pubData = stripTags(match[3]).trim();
+    const signature = stripTags(match[4]).trim();
+    const available = stripTags(match[5]).trim();
+
+    if (title && title !== "Titulo") {
+      books.push({
+        title,
+        author,
+        publicationData: pubData,
+        signature,
+        availableCopies: parseInt(available) || 0,
+      });
+    }
+  }
+
+  // Fallback: try simpler parsing if regex didn't match
+  if (books.length === 0) {
+    const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    const cells = [];
+    let m;
+    while ((m = tdRegex.exec(html)) !== null) {
+      cells.push(stripTags(m[1]).trim());
+    }
+    // Group in sets of 5 (the 5 columns)
+    for (let i = 0; i + 4 < cells.length; i += 5) {
+      if (cells[i] && cells[i] !== "Titulo" && cells[i] !== "") {
+        books.push({
+          title: cells[i],
+          author: cells[i + 1],
+          publicationData: cells[i + 2],
+          signature: cells[i + 3],
+          availableCopies: parseInt(cells[i + 4]) || 0,
+        });
+      }
+    }
+  }
+
+  return books;
+}
+
+function stripTags(html) {
+  if (!html) return "";
+  // Common HTML named entities (especially Spanish accented chars)
+  const entities = {
+    "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&apos;": "'",
+    "&aacute;": "á", "&eacute;": "é", "&iacute;": "í", "&oacute;": "ó", "&uacute;": "ú",
+    "&Aacute;": "Á", "&Eacute;": "É", "&Iacute;": "Í", "&Oacute;": "Ó", "&Uacute;": "Ú",
+    "&ntilde;": "ñ", "&Ntilde;": "Ñ", "&uuml;": "ü", "&Uuml;": "Ü",
+    "&iquest;": "¿", "&iexcl;": "¡", "&mdash;": "—", "&ndash;": "–",
+    "&laquo;": "«", "&raquo;": "»", "&deg;": "°", "&ordm;": "º", "&ordf;": "ª",
+  };
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&[a-zA-Z]+;/g, m => entities[m] || m)
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(n))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\s+/g, " ");
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// SEMANTIC SCHOLAR API
+// ═══════════════════════════════════════════════════════════════════
+
+const S2_BASE = "https://api.semanticscholar.org";
+const S2_PAPER_FIELDS = "title,year,authors,citationCount,tldr,url,openAccessPdf,abstract,venue,publicationTypes,externalIds,influentialCitationCount,referenceCount";
+const S2_AUTHOR_FIELDS = "name,url,paperCount,citationCount,hIndex,affiliations";
+
+function s2Headers(env) {
+  const h = { "Accept": "application/json" };
+  if (env.SEMANTIC_SCHOLAR_KEY) h["x-api-key"] = env.SEMANTIC_SCHOLAR_KEY;
+  return h;
+}
+
+/**
+ * Search papers
+ * body: { query, offset?, limit? }
+ */
+async function scholarSearch(body, env) {
+  const { query, offset = 0, limit = 10 } = body;
+  if (!query) return json({ error: "Falta query" }, 400, env);
+
+  const params = new URLSearchParams({ query, offset: String(offset), limit: String(Math.min(limit, 20)), fields: S2_PAPER_FIELDS });
+  const res = await fetch(`${S2_BASE}/graph/v1/paper/search?${params}`, { headers: s2Headers(env) });
+  if (!res.ok) return json({ error: "Error Semantic Scholar", status: res.status }, res.status, env);
+  const data = await res.json();
+  return json(data, 200, env);
+}
+
+/**
+ * Get paper details + optional citations/references
+ * body: { paperId, include?: "citations" | "references" | "both" }
+ */
+async function scholarPaper(body, env) {
+  const { paperId, include } = body;
+  if (!paperId) return json({ error: "Falta paperId" }, 400, env);
+
+  const res = await fetch(`${S2_BASE}/graph/v1/paper/${paperId}?fields=${S2_PAPER_FIELDS}`, { headers: s2Headers(env) });
+  if (!res.ok) return json({ error: "Paper no encontrado", status: res.status }, res.status, env);
+  const paper = await res.json();
+
+  const result = { paper };
+
+  if (include === "citations" || include === "both") {
+    const cRes = await fetch(`${S2_BASE}/graph/v1/paper/${paperId}/citations?fields=title,year,citationCount,authors,url&limit=10`, { headers: s2Headers(env) });
+    if (cRes.ok) result.citations = (await cRes.json()).data || [];
+  }
+
+  if (include === "references" || include === "both") {
+    const rRes = await fetch(`${S2_BASE}/graph/v1/paper/${paperId}/references?fields=title,year,citationCount,authors,url&limit=10`, { headers: s2Headers(env) });
+    if (rRes.ok) result.references = (await rRes.json()).data || [];
+  }
+
+  return json(result, 200, env);
+}
+
+/**
+ * Get paper recommendations
+ * body: { paperId, limit? }
+ */
+async function scholarRecommend(body, env) {
+  const { paperId, limit = 10 } = body;
+  if (!paperId) return json({ error: "Falta paperId" }, 400, env);
+
+  const res = await fetch(`${S2_BASE}/recommendations/v1/papers/forpaper/${paperId}?fields=${S2_PAPER_FIELDS}&limit=${Math.min(limit, 20)}`, { headers: s2Headers(env) });
+  if (!res.ok) return json({ error: "Error al obtener recomendaciones", status: res.status }, res.status, env);
+  const data = await res.json();
+  return json(data, 200, env);
+}
+
+/**
+ * Search or get author details
+ * body: { query?, authorId? }
+ */
+async function scholarAuthor(body, env) {
+  const { query, authorId } = body;
+
+  if (authorId) {
+    const res = await fetch(`${S2_BASE}/graph/v1/author/${authorId}?fields=${S2_AUTHOR_FIELDS}`, { headers: s2Headers(env) });
+    if (!res.ok) return json({ error: "Autor no encontrado" }, res.status, env);
+    const author = await res.json();
+
+    // Get top papers
+    const pRes = await fetch(`${S2_BASE}/graph/v1/author/${authorId}/papers?fields=title,year,citationCount,venue,url,openAccessPdf&limit=10&sort=citationCount:desc`, { headers: s2Headers(env) });
+    const papers = pRes.ok ? (await pRes.json()).data || [] : [];
+
+    return json({ author, papers }, 200, env);
+  }
+
+  if (query) {
+    const res = await fetch(`${S2_BASE}/graph/v1/author/search?query=${encodeURIComponent(query)}&fields=${S2_AUTHOR_FIELDS}&limit=5`, { headers: s2Headers(env) });
+    if (!res.ok) return json({ error: "Error buscando autor" }, res.status, env);
+    return json(await res.json(), 200, env);
+  }
+
+  return json({ error: "Falta query o authorId" }, 400, env);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// OPENALEX API
+// ═══════════════════════════════════════════════════════════════════
+
+const OA_BASE = "https://api.openalex.org";
+
+function oaParams(env, extra = {}) {
+  const p = new URLSearchParams(extra);
+  if (env.OPENALEX_KEY) p.set("api_key", env.OPENALEX_KEY);
+  else p.set("mailto", "biblioteca@ucalp.edu.ar");
+  return p;
+}
+
+/** Reconstruct abstract from inverted index */
+function reconstructAbstract(inverted) {
+  if (!inverted) return "";
+  const arr = [];
+  for (const [word, positions] of Object.entries(inverted)) {
+    for (const pos of positions) arr[pos] = word;
+  }
+  return arr.join(" ");
+}
+
+/** Map OpenAlex work to simplified format */
+function mapOAWork(w) {
+  return {
+    id: w.id,
+    title: w.display_name || w.title || "",
+    year: w.publication_year,
+    authors: (w.authorships || []).map(a => ({
+      name: a.author?.display_name || "",
+      id: a.author?.id || "",
+      institution: a.institutions?.[0]?.display_name || "",
+    })),
+    citedByCount: w.cited_by_count || 0,
+    type: w.type || "",
+    isOa: w.open_access?.is_oa || false,
+    oaUrl: w.open_access?.oa_url || null,
+    doi: w.doi || null,
+    source: w.primary_location?.source?.display_name || "",
+    sourceType: w.primary_location?.source?.type || "",
+    abstract: reconstructAbstract(w.abstract_inverted_index),
+    topics: (w.topics || []).slice(0, 3).map(t => t.display_name),
+    language: w.language,
+  };
+}
+
+/**
+ * Search works
+ * body: { query, page?, perPage?, filter? }
+ */
+async function openalexSearch(body, env) {
+  const { query, page = 1, perPage = 10, filter } = body;
+  if (!query) return json({ error: "Falta query" }, 400, env);
+
+  const p = oaParams(env);
+  p.set("search", query);
+  p.set("page", String(page));
+  p.set("per_page", String(Math.min(perPage, 25)));
+  p.set("select", "id,display_name,publication_year,authorships,cited_by_count,type,open_access,doi,primary_location,abstract_inverted_index,topics,language");
+  if (filter) p.set("filter", filter);
+
+  const res = await fetch(`${OA_BASE}/works?${p}`);
+  if (!res.ok) return json({ error: "Error OpenAlex", status: res.status }, res.status, env);
+  const data = await res.json();
+
+  return json({
+    works: (data.results || []).map(mapOAWork),
+    total: data.meta?.count || 0,
+    page: data.meta?.page || page,
+    perPage: data.meta?.per_page || perPage,
+  }, 200, env);
+}
+
+/**
+ * Search authors
+ * body: { query }
+ */
+async function openalexAuthors(body, env) {
+  const { query } = body;
+  if (!query) return json({ error: "Falta query" }, 400, env);
+
+  const p = oaParams(env);
+  p.set("search", query);
+  p.set("per_page", "5");
+  p.set("select", "id,display_name,works_count,cited_by_count,summary_stats,affiliations,topics");
+
+  const res = await fetch(`${OA_BASE}/authors?${p}`);
+  if (!res.ok) return json({ error: "Error OpenAlex authors" }, res.status, env);
+  const data = await res.json();
+
+  return json({
+    authors: (data.results || []).map(a => ({
+      id: a.id, name: a.display_name, worksCount: a.works_count,
+      citedByCount: a.cited_by_count, hIndex: a.summary_stats?.h_index,
+      i10Index: a.summary_stats?.i10_index,
+      affiliations: (a.affiliations || []).slice(0, 2).map(af => af.institution?.display_name || ""),
+      topics: (a.topics || []).slice(0, 5).map(t => t.display_name),
+    })),
+  }, 200, env);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// SERPAPI - GOOGLE SCHOLAR
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Search Google Scholar via SerpApi
+ * body: { query, start?, yearFrom?, yearTo?, sortBy? }
+ */
+async function serpScholarSearch(body, env) {
+  const { query, start = 0, yearFrom, yearTo, sortBy } = body;
+  if (!query) return json({ error: "Falta query" }, 400, env);
+  if (!env.SERPAPI_KEY) return json({ error: "SerpApi key no configurada" }, 500, env);
+
+  const p = new URLSearchParams({
+    engine: "google_scholar",
+    q: query,
+    api_key: env.SERPAPI_KEY,
+    start: String(start),
+    num: "10",
+    hl: "es",
+  });
+  if (yearFrom) p.set("as_ylo", String(yearFrom));
+  if (yearTo) p.set("as_yhi", String(yearTo));
+  if (sortBy === "date") p.set("scisbd", "1");
+
+  try {
+    const res = await fetch(`https://serpapi.com/search?${p}`);
+    if (!res.ok) return json({ error: "Error SerpApi", status: res.status }, res.status, env);
+    const data = await res.json();
+
+    const results = (data.organic_results || []).map((r, i) => ({
+      position: r.position || i,
+      title: r.title || "",
+      link: r.link || "",
+      snippet: r.snippet || "",
+      authors: r.publication_info?.summary?.split(" - ")?.[0] || "",
+      publishedInfo: r.publication_info?.summary || "",
+      citedBy: r.inline_links?.cited_by?.total || 0,
+      citedByLink: r.inline_links?.cited_by?.link || "",
+      relatedLink: r.inline_links?.related_pages_link || "",
+      pdfLink: r.resources?.[0]?.link || null,
+      pdfTitle: r.resources?.[0]?.title || null,
+      type: r.type || "",
+    }));
+
+    return json({
+      results,
+      total: data.search_information?.total_results || 0,
+      start,
+      hasMore: results.length >= 10,
+      searchTime: data.search_information?.time_taken_displayed || 0,
+    }, 200, env);
+  } catch (err) {
+    return json({ error: "Error consultando Google Scholar", details: err.message }, 500, env);
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// WOLFRAM ALPHA
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Query Wolfram Alpha Short Answers API
+ * body: { query }
+ */
+async function wolframQuery(body, env) {
+  const { query } = body;
+  if (!query) return json({ error: "Falta query" }, 400, env);
+  if (!env.WOLFRAM_APPID) return json({ error: "Wolfram AppID no configurado" }, 500, env);
+
+  try {
+    // Short Answers API - returns plain text
+    const p = new URLSearchParams({ appid: env.WOLFRAM_APPID, i: query, units: "metric" });
+    const res = await fetch(`https://api.wolframalpha.com/v1/result?${p}`);
+    const text = await res.text();
+
+    if (!res.ok || text.startsWith("Wolfram|Alpha did not understand")) {
+      return json({ answer: null, error: text, query }, 200, env);
+    }
+
+    return json({ answer: text, query }, 200, env);
+  } catch (err) {
+    return json({ error: "Error consultando Wolfram Alpha", details: err.message }, 500, env);
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
 // ROUTER
 // ═══════════════════════════════════════════════════════════════════
 
@@ -1342,6 +1794,15 @@ export default {
         case "/api/google/calendar": return await googleCalendar(body, env);
         case "/api/google/gmail":    return await googleGmail(body, env);
         case "/api/google/drive":    return await googleDrive(body, env);
+        case "/api/biblio/search":   return await biblioSearch(body, env);
+        case "/api/scholar/search":     return await scholarSearch(body, env);
+        case "/api/scholar/paper":      return await scholarPaper(body, env);
+        case "/api/scholar/recommend":  return await scholarRecommend(body, env);
+        case "/api/scholar/author":     return await scholarAuthor(body, env);
+        case "/api/openalex/search":    return await openalexSearch(body, env);
+        case "/api/openalex/authors":   return await openalexAuthors(body, env);
+        case "/api/serpapi/scholar":     return await serpScholarSearch(body, env);
+        case "/api/wolfram/query":       return await wolframQuery(body, env);
         default: return json({ error: "Not found" }, 404, env);
       }
     } catch (err) {
