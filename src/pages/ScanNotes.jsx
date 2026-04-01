@@ -8,7 +8,7 @@ import {
   Printer, Trash2, Image, Plus, X, Sparkles,
 } from "lucide-react";
 
-const VISION_MODEL = "google/gemini-flash-1.5-8b";
+const VISION_MODEL = "google/gemini-2.0-flash-001";
 const AI_URL = `${CONFIG.API_BASE}/api/ai`;
 
 const SYSTEM_PROMPT = `Sos un asistente académico experto en digitalización de apuntes universitarios.
