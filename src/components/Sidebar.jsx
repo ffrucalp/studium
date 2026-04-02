@@ -133,15 +133,13 @@ export default function Sidebar({ currentScreen, onNavigate }) {
           gap: 10,
         }}
       >
-        <div
-          style={{
-            width: 36, height: 36, borderRadius: 10, background: P.red,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#fff", fontSize: 14, fontWeight: 700, flexShrink: 0,
-          }}
-        >
-          {user?.name?.charAt(0) || "E"}
-        </div>
+        {user?.picture ? (
+          <img src={user.picture} alt="" style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, objectFit: "cover" }} referrerPolicy="no-referrer" />
+        ) : (
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: P.red, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
+            {user?.name?.charAt(0) || "E"}
+          </div>
+        )}
         {open && (
           <div style={{ overflow: "hidden" }}>
             <div style={{ color: "#fff", fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>

@@ -329,7 +329,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
                   const cidMatch = n.contexturl.match(/[?&]id=(\d+)/);
                   if (cidMatch) {
                     const c = courses.find(c => String(c.id) === cidMatch[1]);
-                    if (c) courseName = c.shortname;
+                    if (c) courseName = c.fullname;
                   }
                 }
                 // Try fullmessage: pattern "SHORTNAME -> Foros" or "SHORTNAME -> ..."
@@ -338,7 +338,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
                   if (fmMatch) {
                     const sn = fmMatch[1].trim();
                     const c = courses.find(c => c.shortname === sn || c.fullname?.includes(sn));
-                    courseName = c ? c.shortname : sn.length < 40 ? sn : "";
+                    courseName = c ? c.fullname : sn.length < 40 ? sn : "";
                   }
                 }
                 // Try fullmessagehtml: course link
@@ -346,14 +346,14 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
                   const htmlMatch = n.fullmessagehtml.match(/course\/view\.php\?id=(\d+)[^>]*>([^<]+)/);
                   if (htmlMatch) {
                     const c = courses.find(c => String(c.id) === htmlMatch[1]);
-                    courseName = c ? c.shortname : htmlMatch[2].trim().length < 40 ? htmlMatch[2].trim() : "";
+                    courseName = c ? c.fullname : htmlMatch[2].trim().length < 40 ? htmlMatch[2].trim() : "";
                   }
                 }
                 // Try customdata
                 if (!courseName && n.customdata) {
                   try {
                     const cd = typeof n.customdata === "string" ? JSON.parse(n.customdata) : n.customdata;
-                    if (cd.courseid) { const c = courses.find(c => c.id === cd.courseid); if (c) courseName = c.shortname; }
+                    if (cd.courseid) { const c = courses.find(c => c.id === cd.courseid); if (c) courseName = c.fullname; }
                   } catch {}
                 }
                 // Build notification URL
