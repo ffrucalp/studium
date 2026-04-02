@@ -3,10 +3,13 @@ import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
 import { getUpcomingEvents, getUserGrades, getNotifications, getCalendarEvents } from "../services/moodle";
 import { listCalendarEvents } from "../services/google";
+import DriveModal from "../components/DriveModal";
+import AlertModal from "../components/AlertModal";
 import {
   Calendar, Sparkles, HelpCircle, BookOpen, Bell,
   Clock, AlertTriangle, CheckCircle, TrendingUp, Loader2,
   ChevronLeft, ChevronRight, GraduationCap, ExternalLink,
+  HardDrive,
 } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -42,6 +45,8 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
   const [loading, setLoading] = useState(true);
   const [calMonth, setCalMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
+  const [showDrive, setShowDrive] = useState(false);
+  const [showAlert, setShowAlert] = useState(false);
 
   useEffect(() => {
     if (!moodleToken || moodleToken === "mock_token") { setLoading(false); return; }
@@ -56,8 +61,9 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
       const notifs = await getNotifications(moodleToken, moodleUserId);
       if (!cancelled && notifs?.notifications) setNotifications(notifs.notifications);
 
-      // Moodle calendar events
-      const mCal = await getCalendarEvents(moodleToken);
+      // Moodle calendar events (pass course IDs to get course events)
+      const courseIds = courses.map(c => c.id);
+      const mCal = await getCalendarEvents(moodleToken, courseIds);
       const moodleEvts = (mCal?.events || []).map(e => ({
         id: `m-${e.id}`, title: e.name, start: new Date(e.timestart * 1000),
         end: new Date((e.timestart + (e.timeduration || 3600)) * 1000),
@@ -130,6 +136,8 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
     { label: "Plan semanal", icon: Calendar, color: "#d97706", target: "planner" },
     { label: "Tutor IA", icon: Sparkles, color: "#7c3aed", target: "chat" },
     { label: "Biblioteca", icon: BookOpen, color: "#2563eb", target: "library" },
+    { label: "Mi Drive", icon: HardDrive, color: "#4285F4", action: () => setShowDrive(true) },
+    { label: "Nueva alerta", icon: Bell, color: "#D97706", action: () => setShowAlert(true) },
   ];
 
   return (
@@ -142,7 +150,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
       {/* Quick actions */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 22 }}>
         {quickActions.map((a, i) => (
-          <button key={i} onClick={() => onNavigate(a.target)} className="slide-in"
+          <button key={i} onClick={() => a.action ? a.action() : onNavigate(a.target)} className="slide-in"
             style={{ animationDelay: `${i * 0.08}s`, padding: "14px 16px", borderRadius: 12, background: P.card, border: `1px solid ${P.border}`, display: "flex", alignItems: "center", gap: 10, transition: "all 0.2s", textAlign: "left" }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = a.color; e.currentTarget.style.transform = "translateY(-2px)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = P.border; e.currentTarget.style.transform = "none"; }}>
@@ -187,26 +195,26 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
 
           {/* ═══ Calendario unificado ═══ */}
           <div style={{ background: P.card, borderRadius: 16, border: `1px solid ${P.border}`, overflow: "hidden" }}>
-            <div style={{ padding: "13px 18px", borderBottom: `1px solid ${P.borderLight}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Calendar size={15} color="#2563eb" /><h3 style={{ fontSize: 14, fontWeight: 700, color: P.text, fontFamily: ff.heading }}>Calendario</h3></div>
+            <div style={{ padding: "14px 20px", borderBottom: `1px solid ${P.borderLight}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Calendar size={16} color="#2563eb" /><h3 style={{ fontSize: 15, fontWeight: 700, color: P.text, fontFamily: ff.heading }}>Calendario</h3></div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 4, background: "#B71C1C", display: "inline-block" }} /><span style={{ fontSize: 10, color: P.textMuted }}>Moodle</span>
-                {googleAccessToken && <><span style={{ width: 8, height: 8, borderRadius: 4, background: "#4285F4", display: "inline-block", marginLeft: 6 }} /><span style={{ fontSize: 10, color: P.textMuted }}>Google</span></>}
+                <span style={{ width: 8, height: 8, borderRadius: 4, background: "#B71C1C", display: "inline-block" }} /><span style={{ fontSize: 11, color: P.textMuted }}>Moodle</span>
+                {googleAccessToken && <><span style={{ width: 8, height: 8, borderRadius: 4, background: "#4285F4", display: "inline-block", marginLeft: 6 }} /><span style={{ fontSize: 11, color: P.textMuted }}>Google</span></>}
               </div>
             </div>
-            <div style={{ padding: "12px 16px" }}>
+            <div style={{ padding: "16px 20px" }}>
               {/* Month nav */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <button onClick={prevMonth} style={{ padding: 4, color: P.textMuted, borderRadius: 6 }} onMouseEnter={e => e.currentTarget.style.color = P.text} onMouseLeave={e => e.currentTarget.style.color = P.textMuted}><ChevronLeft size={18} /></button>
-                <span style={{ fontSize: 14, fontWeight: 700, color: P.text }}>{MONTH_NAMES[month]} {year}</span>
-                <button onClick={nextMonth} style={{ padding: 4, color: P.textMuted, borderRadius: 6 }} onMouseEnter={e => e.currentTarget.style.color = P.text} onMouseLeave={e => e.currentTarget.style.color = P.textMuted}><ChevronRight size={18} /></button>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <button onClick={prevMonth} style={{ padding: 6, color: P.textMuted, borderRadius: 8 }} onMouseEnter={e => e.currentTarget.style.color = P.text} onMouseLeave={e => e.currentTarget.style.color = P.textMuted}><ChevronLeft size={20} /></button>
+                <span style={{ fontSize: 16, fontWeight: 700, color: P.text }}>{MONTH_NAMES[month]} {year}</span>
+                <button onClick={nextMonth} style={{ padding: 6, color: P.textMuted, borderRadius: 8 }} onMouseEnter={e => e.currentTarget.style.color = P.text} onMouseLeave={e => e.currentTarget.style.color = P.textMuted}><ChevronRight size={20} /></button>
               </div>
               {/* Day headers */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
-                {DAY_NAMES.map(d => <div key={d} style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: P.textMuted, padding: "4px 0" }}>{d}</div>)}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 6 }}>
+                {DAY_NAMES.map(d => <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 700, color: P.textMuted, padding: "6px 0" }}>{d}</div>)}
               </div>
               {/* Calendar grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
                 {calCells.map((day, i) => {
                   if (!day) return <div key={`e${i}`} />;
                   const isToday = sameDay(new Date(year, month, day), today);
@@ -217,17 +225,17 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
                   return (
                     <button key={day} onClick={() => setSelectedDay(isSelected ? null : day)}
                       style={{
-                        padding: "6px 2px 4px", borderRadius: 8, textAlign: "center", transition: "all 0.15s",
+                        padding: "10px 4px 8px", borderRadius: 10, textAlign: "center", transition: "all 0.15s",
                         background: isSelected ? `${P.red}12` : isToday ? P.borderLight : "transparent",
-                        border: isSelected ? `1.5px solid ${P.red}` : isToday ? `1.5px solid ${P.border}` : "1.5px solid transparent",
+                        border: isSelected ? `2px solid ${P.red}` : isToday ? `2px solid ${P.border}` : "2px solid transparent",
                       }}
                       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = P.cream; }}
                       onMouseLeave={e => { if (!isSelected && !isToday) e.currentTarget.style.background = "transparent"; else if (isToday && !isSelected) e.currentTarget.style.background = P.borderLight; }}>
-                      <div style={{ fontSize: 12, fontWeight: isToday ? 800 : 500, color: isToday ? P.red : P.text }}>{day}</div>
+                      <div style={{ fontSize: 14, fontWeight: isToday ? 800 : 500, color: isToday ? P.red : P.text }}>{day}</div>
                       {evts.length > 0 && (
-                        <div style={{ display: "flex", gap: 2, justifyContent: "center", marginTop: 2 }}>
-                          {hasMoodle && <div style={{ width: 5, height: 5, borderRadius: 3, background: "#B71C1C" }} />}
-                          {hasGoogle && <div style={{ width: 5, height: 5, borderRadius: 3, background: "#4285F4" }} />}
+                        <div style={{ display: "flex", gap: 3, justifyContent: "center", marginTop: 4 }}>
+                          {hasMoodle && <div style={{ width: 6, height: 6, borderRadius: 3, background: "#B71C1C" }} />}
+                          {hasGoogle && <div style={{ width: 6, height: 6, borderRadius: 3, background: "#4285F4" }} />}
                         </div>
                       )}
                     </button>
@@ -236,18 +244,18 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
               </div>
               {/* Selected day events */}
               {selectedDay && (
-                <div style={{ marginTop: 12, borderTop: `1px solid ${P.borderLight}`, paddingTop: 10 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: P.text, marginBottom: 6 }}>{fmtDay(new Date(year, month, selectedDay))}</div>
-                  {selectedDayEvents.length === 0 ? <div style={{ fontSize: 12, color: P.textMuted }}>Sin eventos</div>
+                <div style={{ marginTop: 14, borderTop: `1px solid ${P.borderLight}`, paddingTop: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: P.text, marginBottom: 8 }}>{fmtDay(new Date(year, month, selectedDay))}</div>
+                  {selectedDayEvents.length === 0 ? <div style={{ fontSize: 13, color: P.textMuted }}>Sin eventos este día</div>
                   : selectedDayEvents.map((e, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, marginBottom: 3 }}
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, marginBottom: 4 }}
                       onMouseEnter={ev => ev.currentTarget.style.background = P.cream} onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
-                      <div style={{ width: 6, height: 6, borderRadius: 3, background: e.color, flexShrink: 0 }} />
+                      <div style={{ width: 8, height: 8, borderRadius: 4, background: e.color, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: P.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div>
-                        {e.description && <div style={{ fontSize: 10, color: P.textMuted }}>{e.description}</div>}
+                        <div style={{ fontSize: 13, fontWeight: 500, color: P.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div>
+                        {e.description && <div style={{ fontSize: 11, color: P.textMuted, marginTop: 2 }}>{e.description}</div>}
                       </div>
-                      {e.url && <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ color: P.textMuted, flexShrink: 0 }}><ExternalLink size={12} /></a>}
+                      {e.url && <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ color: P.textMuted, flexShrink: 0 }}><ExternalLink size={14} /></a>}
                     </div>
                   ))}
                 </div>
@@ -309,6 +317,10 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
       </div>
 
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.spin{animation:spin 1s linear infinite}`}</style>
+
+      {/* Modals */}
+      {showDrive && <DriveModal onClose={() => setShowDrive(false)} />}
+      {showAlert && <AlertModal onClose={() => setShowAlert(false)} courses={courses} />}
     </div>
   );
 }
