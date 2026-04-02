@@ -4,13 +4,14 @@ import { useApp } from "../context/AppContext";
 import {
   Home, Sparkles, Calendar, HelpCircle, Settings,
   GraduationCap, BookOpen, ChevronLeft, Menu, Library,
-  Calculator, Camera, MessageCircle,
+  Calculator, Camera, MessageCircle, Radio,
 } from "lucide-react";
 
 const navItems = [
   { id: "dashboard", label: "Inicio", Icon: Home },
   { id: "courses", label: "Mis Materias", Icon: GraduationCap },
   { id: "messages", label: "Mensajes", Icon: MessageCircle },
+  { id: "livechat", label: "Chat en vivo", Icon: Radio },
   { id: "career", label: "Mi Carrera", Icon: BookOpen },
   { id: "library", label: "Biblioteca", Icon: Library },
   { id: "wolfram", label: "Calculadora", Icon: Calculator },
