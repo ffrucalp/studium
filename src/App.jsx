@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { P, ff } from "./styles/theme";
 import { useApp } from "./context/AppContext";
 import Sidebar from "./components/Sidebar";
@@ -17,7 +17,7 @@ import WolframPage from "./pages/Wolfram";
 import ScanNotesPage from "./pages/ScanNotes";
 
 export default function App() {
-  const { user, moodleToken, selectedCourse, setSelectedCourse, loginWithGoogle, setGoogleTokens } = useApp();
+  const { user, moodleToken, courses, selectedCourse, setSelectedCourse, loginWithGoogle, setGoogleTokens } = useApp();
   const [screen, setScreen] = useState(() => {
     try { return localStorage.getItem("studium_screen") || "dashboard"; } catch { return "dashboard"; }
   });
@@ -28,41 +28,68 @@ export default function App() {
     try { localStorage.setItem("studium_screen", screen); } catch {}
   }, [screen]);
 
+  // ── Browser history management ──
+  const pushHistory = useCallback((newScreen, courseId = null) => {
+    history.pushState({ screen: newScreen, courseId }, "", `#${newScreen}`);
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = (e) => {
+      const state = e.state;
+      if (state?.screen) {
+        setScreen(state.screen);
+        if (state.courseId && courses.length > 0) {
+          const c = courses.find(c => c.id === state.courseId);
+          if (c) setSelectedCourse(c);
+          else setSelectedCourse(null);
+        } else {
+          setSelectedCourse(null);
+        }
+        setQuizCourse(null);
+      } else {
+        setScreen("dashboard");
+        setSelectedCourse(null);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    if (!history.state) history.replaceState({ screen }, "", `#${screen}`);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [courses, setSelectedCourse, screen]);
+
   // Check if we're on the OAuth callback
   const isCallback = window.location.pathname === "/auth/callback" || window.location.search.includes("code=");
 
   if (isCallback) {
     return (
       <AuthCallback
-        onSuccess={(data) => {
-          setGoogleTokens(data);
-          loginWithGoogle(data.user);
-        }}
+        onSuccess={(data) => { setGoogleTokens(data); loginWithGoogle(data.user); }}
         onError={() => window.location.href = "/"}
       />
     );
   }
 
   if (!user) {
-    return (
-      <Login onMockLogin={() => loginWithGoogle({ name: "Estudiante UCALP", email: "alumno@ucalpvirtual.edu.ar" })} />
-    );
+    return <Login onMockLogin={() => loginWithGoogle({ name: "Estudiante UCALP", email: "alumno@ucalpvirtual.edu.ar" })} />;
   }
 
   if (!moodleToken) return <MoodleConnect onConnected={() => setScreen("dashboard")} />;
 
   const navigate = (target) => {
+    pushHistory(target);
     setScreen(target);
     setSelectedCourse(null);
     setQuizCourse(null);
   };
 
   const selectCourse = (course) => {
+    pushHistory("course", course.id);
     setSelectedCourse(course);
     setScreen("course");
   };
 
   const navigateQuiz = (course) => {
+    pushHistory("quiz", course?.id);
     setQuizCourse(course);
     setScreen("quiz");
   };
@@ -73,8 +100,10 @@ export default function App() {
         return <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
       case "course":
         return selectedCourse ? (
-          <CourseDetail course={selectedCourse} onBack={() => { setSelectedCourse(null); setScreen("dashboard"); }}
-            onNavigateChat={() => setScreen("chat")} onNavigateQuiz={navigateQuiz} />
+          <CourseDetail course={selectedCourse}
+            onBack={() => history.back()}
+            onNavigateChat={() => { pushHistory("chat"); setScreen("chat"); }}
+            onNavigateQuiz={navigateQuiz} />
         ) : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
       case "chat": return <Chat />;
       case "career": return <Career />;
