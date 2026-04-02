@@ -939,16 +939,26 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
                     background: isSelected ? `${course.color}08` : "transparent",
                     borderLeft: isSelected ? `3px solid ${course.color}` : "3px solid transparent",
                   }}
-                  onClick={() => extracted?.text && setSelectedMat(mat)}
+                  onClick={() => {
+                    if (mat.type === "forum" || mat.type === "url" || mat.type === "assign" || mat.type === "quiz") {
+                      if (mat.url) window.open(mat.url, "_blank");
+                    } else if (extracted?.text) {
+                      setSelectedMat(mat);
+                    }
+                  }}
                   onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = P.cream; }}
                   onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}>
                   <div style={{ width: 34, height: 34, borderRadius: 7, background: c.bg, display: "flex", alignItems: "center", justifyContent: "center", color: c.fg, flexShrink: 0 }}>
-                    <FileText size={16} />
+                    {mat.type === "forum" ? <MessageSquare size={16} /> : mat.type === "url" ? <ChevronRight size={16} /> : mat.type === "assign" ? <BookOpen size={16} /> : mat.type === "quiz" ? <HelpCircle size={16} /> : <FileText size={16} />}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, color: P.text, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>{mat.name}</div>
                     <div style={{ fontSize: 11, color: P.textMuted }}>
                       {mat.section}{size ? ` · ${size}` : ""}
+                      {mat.type === "forum" && <span style={{ color: "#E65100", fontWeight: 600 }}> · Foro — Abrir en Moodle</span>}
+                      {mat.type === "url" && <span style={{ color: "#2E7D32", fontWeight: 600 }}> · Enlace externo</span>}
+                      {mat.type === "assign" && <span style={{ color: "#2563EB", fontWeight: 600 }}> · Actividad — Abrir en Moodle</span>}
+                      {mat.type === "quiz" && <span style={{ color: "#6A1B9A", fontWeight: 600 }}> · Cuestionario — Abrir en Moodle</span>}
                       {extracted?.text && <span style={{ color: "#16A34A", fontWeight: 600 }}> · ✓ {extracted.chars} chars</span>}
                       {extracted?.loading && <span style={{ color: P.red }}> · leyendo...</span>}
                     </div>

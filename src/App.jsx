@@ -18,8 +18,15 @@ import ScanNotesPage from "./pages/ScanNotes";
 
 export default function App() {
   const { user, moodleToken, selectedCourse, setSelectedCourse, loginWithGoogle, setGoogleTokens } = useApp();
-  const [screen, setScreen] = useState("dashboard");
+  const [screen, setScreen] = useState(() => {
+    try { return localStorage.getItem("studium_screen") || "dashboard"; } catch { return "dashboard"; }
+  });
   const [quizCourse, setQuizCourse] = useState(null);
+
+  // Persist screen on change
+  useEffect(() => {
+    try { localStorage.setItem("studium_screen", screen); } catch {}
+  }, [screen]);
 
   // Check if we're on the OAuth callback
   const isCallback = window.location.pathname === "/auth/callback" || window.location.search.includes("code=");

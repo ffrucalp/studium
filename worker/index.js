@@ -414,7 +414,22 @@ async function moodleCall(body, env) {
   url.searchParams.set("wstoken", token);
   url.searchParams.set("wsfunction", wsfunction);
   url.searchParams.set("moodlewsrestformat", "json");
-  if (params) for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+
+  // Handle params - Moodle expects arrays as param[0]=val0&param[1]=val1
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (Array.isArray(v)) {
+        v.forEach((item, i) => url.searchParams.set(`${k}[${i}]`, String(item)));
+      } else if (typeof v === "object" && v !== null) {
+        for (const [sk, sv] of Object.entries(v)) {
+          url.searchParams.set(`${k}[${sk}]`, String(sv));
+        }
+      } else {
+        url.searchParams.set(k, String(v));
+      }
+    }
+  }
+
   const res = await fetch(url.toString());
   const data = await res.json();
   if (data.exception) return json({ error: data.message || data.exception }, 400, env);

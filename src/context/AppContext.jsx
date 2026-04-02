@@ -52,8 +52,22 @@ export function AppProvider({ children }) {
   const [moodleUserId, setMoodleUserId] = useState(saved?.moodleUserId || null);
   const [courses, setCourses] = useState(saved?.courses || []);
   const [selectedCourse, setSelectedCourse] = useState(null);
-  const [courseMaterials, setCourseMaterials] = useState({});
+  const [courseMaterials, setCourseMaterials] = useState(() => {
+    try {
+      const cached = localStorage.getItem("studium_materials");
+      return cached ? JSON.parse(cached) : {};
+    } catch { return {}; }
+  });
   const [useMock, setUseMock] = useState(saved?.useMock || false);
+
+  // Persist courseMaterials cache
+  useEffect(() => {
+    try {
+      if (Object.keys(courseMaterials).length > 0) {
+        localStorage.setItem("studium_materials", JSON.stringify(courseMaterials));
+      }
+    } catch {}
+  }, [courseMaterials]);
 
   // Zona Interactiva state
   const [zonaSession, setZonaSession] = useState(saved?.zonaSession || null);
@@ -217,6 +231,7 @@ export function AppProvider({ children }) {
     setCourses([]);
     setSelectedCourse(null);
     setCourseMaterials({});
+    try { localStorage.removeItem("studium_materials"); localStorage.removeItem("studium_screen"); } catch {}
     setUseMock(false);
     setZonaSession(null);
     setZonaStudent(null);
