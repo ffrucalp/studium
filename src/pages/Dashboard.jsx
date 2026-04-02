@@ -9,7 +9,7 @@ import {
   Calendar, Sparkles, HelpCircle, BookOpen, Bell,
   Clock, AlertTriangle, CheckCircle, TrendingUp, Loader2,
   ChevronLeft, ChevronRight, GraduationCap, ExternalLink,
-  HardDrive,
+  HardDrive, Plus,
 } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -47,6 +47,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
   const [selectedDay, setSelectedDay] = useState(null);
   const [showDrive, setShowDrive] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
+  const [alertDate, setAlertDate] = useState(null);
 
   useEffect(() => {
     if (!moodleToken || moodleToken === "mock_token") { setLoading(false); return; }
@@ -152,7 +153,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
     { label: "Tutor IA", icon: Sparkles, color: "#7c3aed", target: "chat" },
     { label: "Biblioteca", icon: BookOpen, color: "#2563eb", target: "library" },
     { label: "Mi Drive", icon: HardDrive, color: "#4285F4", action: () => setShowDrive(true) },
-    { label: "Nueva alerta", icon: Bell, color: "#D97706", action: () => setShowAlert(true) },
+    { label: "Nueva alerta", icon: Bell, color: "#D97706", action: () => { setAlertDate(null); setShowAlert(true); } },
   ];
 
   return (
@@ -260,19 +261,41 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
               {/* Selected day events */}
               {selectedDay && (
                 <div style={{ marginTop: 14, borderTop: `1px solid ${P.borderLight}`, paddingTop: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: P.text, marginBottom: 8 }}>{fmtDay(new Date(year, month, selectedDay))}</div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: P.text }}>{fmtDay(new Date(year, month, selectedDay))}</div>
+                    {googleAccessToken && (
+                      <button onClick={() => {
+                        const d = new Date(year, month, selectedDay);
+                        setAlertDate(d.toISOString().split("T")[0]);
+                        setShowAlert(true);
+                      }}
+                        style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, color: "#4285F4", background: "#4285F412", border: "none", cursor: "pointer", transition: "all 0.15s" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "#4285F420"} onMouseLeave={e => e.currentTarget.style.background = "#4285F412"}>
+                        <Plus size={13} /> Crear evento
+                      </button>
+                    )}
+                  </div>
                   {selectedDayEvents.length === 0 ? <div style={{ fontSize: 13, color: P.textMuted }}>Sin eventos este día</div>
-                  : selectedDayEvents.map((e, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, marginBottom: 4 }}
-                      onMouseEnter={ev => ev.currentTarget.style.background = P.cream} onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
-                      <div style={{ width: 8, height: 8, borderRadius: 4, background: e.color, flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: P.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div>
-                        {e.description && <div style={{ fontSize: 11, color: P.textMuted, marginTop: 2 }}>{e.description}</div>}
+                  : selectedDayEvents.map((e, i) => {
+                    const timeStr = e.start ? e.start.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "";
+                    const endStr = e.end ? e.end.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "";
+                    return (
+                      <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px", borderRadius: 8, marginBottom: 4 }}
+                        onMouseEnter={ev => ev.currentTarget.style.background = P.cream} onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, minWidth: 44 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: 4, background: e.color, marginBottom: 4 }} />
+                          {timeStr && <div style={{ fontSize: 11, fontWeight: 600, color: P.text }}>{timeStr}</div>}
+                          {endStr && timeStr !== endStr && <div style={{ fontSize: 10, color: P.textMuted }}>{endStr}</div>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: P.text }}>{e.title}</div>
+                          {e.description && <div style={{ fontSize: 11, color: P.textMuted, marginTop: 2 }}>{e.description}</div>}
+                          <div style={{ fontSize: 10, color: P.textMuted, marginTop: 2 }}>{e.type === "moodle" ? "Moodle" : "Google Calendar"}</div>
+                        </div>
+                        {e.url && <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ color: P.textMuted, flexShrink: 0, marginTop: 2 }}><ExternalLink size={14} /></a>}
                       </div>
-                      {e.url && <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ color: P.textMuted, flexShrink: 0 }}><ExternalLink size={14} /></a>}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -391,7 +414,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
 
       {/* Modals */}
       {showDrive && <DriveModal onClose={() => setShowDrive(false)} />}
-      {showAlert && <AlertModal onClose={() => setShowAlert(false)} courses={courses} />}
+      {showAlert && <AlertModal onClose={() => setShowAlert(false)} courses={courses} defaultDate={alertDate} />}
     </div>
   );
 }

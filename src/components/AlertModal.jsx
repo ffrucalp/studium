@@ -15,10 +15,15 @@ const PRESETS = [
   { label: "Reunión de grupo", icon: Calendar, color: "#D97706" },
 ];
 
-export default function AlertModal({ onClose, courses = [] }) {
+export default function AlertModal({ onClose, courses = [], defaultDate = null }) {
   const { googleAccessToken } = useApp();
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(() => {
+    if (defaultDate) return defaultDate;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split("T")[0];
+  });
   const [time, setTime] = useState("09:00");
   const [duration, setDuration] = useState("60");
   const [course, setCourse] = useState("");
@@ -26,13 +31,6 @@ export default function AlertModal({ onClose, courses = [] }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
-
-  // Set default date to tomorrow
-  useState(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setDate(tomorrow.toISOString().split("T")[0]);
-  });
 
   const handlePreset = (preset) => {
     setTitle(preset.label);
