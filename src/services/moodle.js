@@ -161,6 +161,57 @@ export function assignCourseColor(index) {
   return COURSE_COLORS[index % COURSE_COLORS.length];
 }
 
+// ─── Grades ──────────────────────────────────────────────────────
+
+/**
+ * Get user grades for a course
+ */
+export async function getUserGrades(token, courseId, userId) {
+  try {
+    return await moodleCall(token, "gradereport_user_get_grade_items", {
+      courseid: courseId, userid: userId,
+    });
+  } catch { return null; }
+}
+
+// ─── Assignments ─────────────────────────────────────────────────
+
+/**
+ * Get assignments for courses
+ */
+export async function getAssignments(token, courseIds) {
+  try {
+    return await moodleCall(token, "mod_assign_get_assignments", {
+      courseids: courseIds,
+    });
+  } catch { return null; }
+}
+
+// ─── Calendar & Upcoming Events ──────────────────────────────────
+
+/**
+ * Get upcoming action events (deadlines, due dates)
+ */
+export async function getUpcomingEvents(token) {
+  try {
+    return await moodleCall(token, "core_calendar_get_action_events_by_timesort", {
+      timesortfrom: Math.floor(Date.now() / 1000),
+      limitnum: 20,
+    });
+  } catch { return null; }
+}
+
+/**
+ * Get notifications
+ */
+export async function getNotifications(token, userId) {
+  try {
+    return await moodleCall(token, "message_popup_get_popup_notifications", {
+      useridto: userId, limit: 10,
+    });
+  } catch { return null; }
+}
+
 /**
  * Parse Moodle course contents into a flat list of materials
  */
