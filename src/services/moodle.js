@@ -202,6 +202,19 @@ export async function getUpcomingEvents(token) {
 }
 
 /**
+ * Get calendar events for a date range
+ */
+export async function getCalendarEvents(token) {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    return await moodleCall(token, "core_calendar_get_calendar_events", {
+      events: { courseids: [], groupids: [] },
+      options: { timestart: now - 86400 * 7, timeend: now + 86400 * 30, userevents: 1, siteevents: 1 },
+    });
+  } catch { return null; }
+}
+
+/**
  * Get notifications
  */
 export async function getNotifications(token, userId) {

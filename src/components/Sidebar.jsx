@@ -9,6 +9,7 @@ import {
 
 const navItems = [
   { id: "dashboard", label: "Inicio", Icon: Home },
+  { id: "courses", label: "Mis Materias", Icon: GraduationCap },
   { id: "career", label: "Mi Carrera", Icon: BookOpen },
   { id: "library", label: "Biblioteca", Icon: Library },
   { id: "wolfram", label: "Calculadora", Icon: Calculator },

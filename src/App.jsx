@@ -15,6 +15,7 @@ import SettingsPage from "./pages/Settings";
 import LibraryPage from "./pages/Library";
 import WolframPage from "./pages/Wolfram";
 import ScanNotesPage from "./pages/ScanNotes";
+import CoursesPage from "./pages/Courses";
 
 export default function App() {
   const { user, moodleToken, courses, selectedCourse, setSelectedCourse, loginWithGoogle, setGoogleTokens } = useApp();
@@ -106,6 +107,7 @@ export default function App() {
             onNavigateQuiz={navigateQuiz} />
         ) : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
       case "chat": return <Chat />;
+      case "courses": return <CoursesPage onSelectCourse={selectCourse} />;
       case "career": return <Career />;
       case "library": return <LibraryPage />;
       case "wolfram": return <WolframPage />;
