@@ -332,15 +332,38 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
                     if (c) courseName = c.shortname;
                   }
                 }
-                // Fallback: try customdata
+                // Try fullmessage: pattern "SHORTNAME -> Foros" or "SHORTNAME -> ..."
+                if (!courseName && n.fullmessage) {
+                  const fmMatch = n.fullmessage.match(/\n\n([^\n]+?)\s*->\s*/);
+                  if (fmMatch) {
+                    const sn = fmMatch[1].trim();
+                    const c = courses.find(c => c.shortname === sn || c.fullname?.includes(sn));
+                    courseName = c ? c.shortname : sn.length < 40 ? sn : "";
+                  }
+                }
+                // Try fullmessagehtml: course link
+                if (!courseName && n.fullmessagehtml) {
+                  const htmlMatch = n.fullmessagehtml.match(/course\/view\.php\?id=(\d+)[^>]*>([^<]+)/);
+                  if (htmlMatch) {
+                    const c = courses.find(c => String(c.id) === htmlMatch[1]);
+                    courseName = c ? c.shortname : htmlMatch[2].trim().length < 40 ? htmlMatch[2].trim() : "";
+                  }
+                }
+                // Try customdata
                 if (!courseName && n.customdata) {
                   try {
                     const cd = typeof n.customdata === "string" ? JSON.parse(n.customdata) : n.customdata;
                     if (cd.courseid) { const c = courses.find(c => c.id === cd.courseid); if (c) courseName = c.shortname; }
                   } catch {}
                 }
+                // Build notification URL
+                let notifUrl = n.contexturl;
+                if (!notifUrl && n.fullmessagehtml) {
+                  const urlMatch = n.fullmessagehtml.match(/href="(https:\/\/campus\.ucalp\.edu\.ar\/mod\/[^"]+)"/);
+                  if (urlMatch) notifUrl = urlMatch[1];
+                }
                 return (
-                  <a key={i} href={n.contexturl || "#"} target={n.contexturl ? "_blank" : undefined} rel="noopener noreferrer"
+                  <a key={i} href={notifUrl || "#"} target={notifUrl ? "_blank" : undefined} rel="noopener noreferrer"
                     style={{ display: "block", padding: "8px 10px", borderRadius: 8, fontSize: 12, lineHeight: 1.5, marginBottom: 3, textDecoration: "none",
                       background: !n.read ? `#7c3aed08` : "transparent", borderLeft: !n.read ? "3px solid #7c3aed" : "3px solid transparent",
                       transition: "all 0.15s" }}
