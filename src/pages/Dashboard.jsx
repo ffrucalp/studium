@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
 import { getUpcomingEvents, getUserGrades, getNotifications, getCalendarEvents } from "../services/moodle";
-import { listCalendarEvents } from "../services/google";
+import { listCalendarEvents, refreshToken } from "../services/google";
 import DriveModal from "../components/DriveModal";
 import AlertModal from "../components/AlertModal";
 import {
@@ -37,7 +37,7 @@ const DAY_NAMES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const MONTH_NAMES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 export default function Dashboard({ onNavigate, onSelectCourse }) {
-  const { courses, moodleToken, moodleUserId, googleAccessToken } = useApp();
+  const { courses, moodleToken, moodleUserId, googleAccessToken, googleRefreshToken, setGoogleTokens } = useApp();
   const [events, setEvents] = useState(null);
   const [grades, setGrades] = useState(null);
   const [notifications, setNotifications] = useState(null);
@@ -72,21 +72,36 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
       }));
       if (!cancelled) setCalEvents(prev => [...moodleEvts, ...prev.filter(e => e.type !== "moodle")]);
 
-      // Google Calendar events
+      // Google Calendar events (with token refresh on 401)
       if (googleAccessToken) {
-        try {
+        const loadGoogleCal = async (token) => {
           const now = new Date();
-          const gCal = await listCalendarEvents(googleAccessToken,
+          const gCal = await listCalendarEvents(token,
             new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString(),
             new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString());
-          const gEvts = (gCal?.events || []).map(e => ({
+          return (gCal || []).map(e => ({
             id: `g-${e.id}`, title: e.summary, start: new Date(e.start?.dateTime || e.start?.date),
             end: new Date(e.end?.dateTime || e.end?.date),
             type: "google", color: "#4285F4", url: e.htmlLink,
             description: e.description?.substring(0, 120) || "",
           }));
+        };
+        try {
+          const gEvts = await loadGoogleCal(googleAccessToken);
           if (!cancelled) setCalEvents(prev => [...prev.filter(e => e.type !== "google"), ...gEvts]);
-        } catch {}
+        } catch {
+          // Token likely expired — try refreshing
+          if (googleRefreshToken) {
+            try {
+              const newTokenData = await refreshToken(googleRefreshToken);
+              if (newTokenData?.access_token) {
+                setGoogleTokens(newTokenData);
+                const gEvts = await loadGoogleCal(newTokenData.access_token);
+                if (!cancelled) setCalEvents(prev => [...prev.filter(e => e.type !== "google"), ...gEvts]);
+              }
+            } catch {}
+          }
+        }
       }
 
       // Grades for first 5 courses
@@ -300,17 +315,50 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
               <Bell size={15} color="#7c3aed" /><h3 style={{ fontSize: 14, fontWeight: 700, color: P.text, fontFamily: ff.heading }}>Notificaciones</h3>
               {unreadNotifs.length > 0 && <span style={{ fontSize: 10, color: "#fff", background: "#7c3aed", padding: "1px 6px", borderRadius: 10, fontWeight: 700 }}>{unreadNotifs.length}</span>}
             </div>
-            <div style={{ padding: "6px 10px", maxHeight: 200, overflow: "auto" }}>
+            <div style={{ padding: "6px 10px", maxHeight: 280, overflow: "auto" }}>
               {loading ? <div style={{ padding: 20, textAlign: "center", color: P.textMuted }}><Loader2 size={15} className="spin" color={P.red} /></div>
               : !notifications || notifications.length === 0 ? <div style={{ padding: 20, textAlign: "center", color: P.textMuted, fontSize: 13 }}>Sin notificaciones</div>
-              : (notifications || []).slice(0, 6).map((n, i) => (
-                <div key={i} style={{ padding: "7px 10px", borderRadius: 6, fontSize: 12, lineHeight: 1.5, marginBottom: 2,
-                  background: !n.read ? `#7c3aed08` : "transparent", borderLeft: !n.read ? "3px solid #7c3aed" : "3px solid transparent" }}>
-                  <div style={{ fontWeight: 600, color: P.text, fontSize: 12 }}>{n.subject || "Notificación"}</div>
-                  {n.smallmessage && <div style={{ color: P.textMuted, fontSize: 11 }}>{n.smallmessage.substring(0, 100)}</div>}
-                  {n.timecreated && <div style={{ fontSize: 10, color: P.textMuted, marginTop: 2 }}>{fmtDate(n.timecreated)}</div>}
-                </div>
-              ))}
+              : (notifications || []).slice(0, 8).map((n, i) => {
+                const compLabels = { mod_forum: "Foro", mod_assign: "Tarea", mod_quiz: "Quiz", mod_resource: "Recurso", core: "Sistema" };
+                const compName = compLabels[n.component] || n.component?.replace("mod_", "") || "";
+                const compColors = { mod_forum: "#E65100", mod_assign: "#2563EB", mod_quiz: "#6A1B9A", mod_resource: "#B71C1C" };
+                const compColor = compColors[n.component] || "#7c3aed";
+                // Try to find course name from contexturl
+                let courseName = "";
+                if (n.contexturl) {
+                  const cidMatch = n.contexturl.match(/[?&]id=(\d+)/);
+                  if (cidMatch) {
+                    const c = courses.find(c => String(c.id) === cidMatch[1]);
+                    if (c) courseName = c.shortname;
+                  }
+                }
+                // Fallback: try customdata
+                if (!courseName && n.customdata) {
+                  try {
+                    const cd = typeof n.customdata === "string" ? JSON.parse(n.customdata) : n.customdata;
+                    if (cd.courseid) { const c = courses.find(c => c.id === cd.courseid); if (c) courseName = c.shortname; }
+                  } catch {}
+                }
+                return (
+                  <a key={i} href={n.contexturl || "#"} target={n.contexturl ? "_blank" : undefined} rel="noopener noreferrer"
+                    style={{ display: "block", padding: "8px 10px", borderRadius: 8, fontSize: 12, lineHeight: 1.5, marginBottom: 3, textDecoration: "none",
+                      background: !n.read ? `#7c3aed08` : "transparent", borderLeft: !n.read ? "3px solid #7c3aed" : "3px solid transparent",
+                      transition: "all 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.background = P.cream} onMouseLeave={e => e.currentTarget.style.background = !n.read ? `#7c3aed08` : "transparent"}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                      <span style={{ fontWeight: 600, color: P.text, fontSize: 12, flex: 1 }}>{n.subject || "Notificación"}</span>
+                      {compName && <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: `${compColor}12`, color: compColor, textTransform: "uppercase", letterSpacing: 0.3 }}>{compName}</span>}
+                    </div>
+                    {(courseName || n.smallmessage) && (
+                      <div style={{ fontSize: 11, color: P.textMuted }}>
+                        {courseName && <span style={{ fontWeight: 600, color: P.textSec }}>{courseName} · </span>}
+                        {n.smallmessage?.substring(0, 80)}
+                      </div>
+                    )}
+                    {n.timecreated && <div style={{ fontSize: 10, color: P.textMuted, marginTop: 2 }}>{fmtDate(n.timecreated)}</div>}
+                  </a>
+                );
+              })}
             </div>
           </div>
         </div>
