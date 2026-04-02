@@ -229,6 +229,141 @@ export async function getNotifications(token, userId) {
   } catch { return null; }
 }
 
+// ─── Forum Write ─────────────────────────────────────────────────
+
+/**
+ * Reply to a forum discussion
+ */
+export async function addForumReply(token, postId, message) {
+  try {
+    return await moodleCall(token, "mod_forum_add_discussion_post", {
+      postid: postId,
+      subject: "Re:",
+      message,
+      "options[0][name]": "discussionsubscribe",
+      "options[0][value]": "true",
+    });
+  } catch (e) {
+    throw new Error(e.message || "No se pudo enviar la respuesta");
+  }
+}
+
+/**
+ * Create a new forum discussion
+ */
+export async function addForumDiscussion(token, forumId, subject, message) {
+  try {
+    return await moodleCall(token, "mod_forum_add_discussion", {
+      forumid: forumId,
+      subject,
+      message,
+      "options[0][name]": "discussionsubscribe",
+      "options[0][value]": "true",
+    });
+  } catch (e) {
+    throw new Error(e.message || "No se pudo crear la discusión");
+  }
+}
+
+// ─── Assignments ─────────────────────────────────────────────────
+
+/**
+ * Get assignment submission status for a user
+ */
+export async function getSubmissionStatus(token, assignId, userId) {
+  try {
+    return await moodleCall(token, "mod_assign_get_submission_status", {
+      assignid: assignId, userid: userId,
+    });
+  } catch { return null; }
+}
+
+// ─── Quizzes ─────────────────────────────────────────────────────
+
+/**
+ * Get quizzes for courses
+ */
+export async function getQuizzesByCourses(token, courseIds) {
+  try {
+    return await moodleCall(token, "mod_quiz_get_quizzes_by_courses", {
+      courseids: courseIds,
+    });
+  } catch { return null; }
+}
+
+/**
+ * Get user quiz attempts
+ */
+export async function getUserAttempts(token, quizId, userId) {
+  try {
+    return await moodleCall(token, "mod_quiz_get_user_attempts", {
+      quizid: quizId, userid: userId, status: "all",
+    });
+  } catch { return null; }
+}
+
+// ─── Messaging ───────────────────────────────────────────────────
+
+/**
+ * Get conversations
+ */
+export async function getConversations(token, userId) {
+  try {
+    return await moodleCall(token, "core_message_get_conversations", {
+      userid: userId, limitnum: 50,
+    });
+  } catch { return null; }
+}
+
+/**
+ * Get messages from a conversation
+ */
+export async function getConversationMessages(token, conversationId, userId) {
+  try {
+    return await moodleCall(token, "core_message_get_conversation_messages", {
+      convid: conversationId, currentuserid: userId, limitnum: 30,
+    });
+  } catch { return null; }
+}
+
+/**
+ * Send a message to a user
+ */
+export async function sendMessage(token, toUserId, text) {
+  try {
+    return await moodleCall(token, "core_message_send_instant_messages", {
+      "messages[0][touserid]": toUserId,
+      "messages[0][text]": text,
+    });
+  } catch (e) {
+    throw new Error(e.message || "No se pudo enviar el mensaje");
+  }
+}
+
+// ─── Badges ──────────────────────────────────────────────────────
+
+/**
+ * Get user badges
+ */
+export async function getUserBadges(token, userId) {
+  try {
+    return await moodleCall(token, "core_badges_get_user_badges", {
+      userid: userId,
+    });
+  } catch { return null; }
+}
+
+/**
+ * Get enrolled users in a course
+ */
+export async function getEnrolledUsers(token, courseId) {
+  try {
+    return await moodleCall(token, "core_enrol_get_enrolled_users", {
+      courseid: courseId,
+    });
+  } catch { return null; }
+}
+
 /**
  * Parse Moodle course contents into a flat list of materials
  */

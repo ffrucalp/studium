@@ -3,7 +3,7 @@ import { P, ff } from "../styles/theme";
 import { CONFIG } from "../config";
 import { useApp } from "../context/AppContext";
 import { generateCourseSummary, generateQuiz, callAI } from "../services/ai";
-import { extractFileText, downloadFile, getForumsByCourse, getForumDiscussions, getDiscussionPosts } from "../services/moodle";
+import { extractFileText, downloadFile, getForumsByCourse, getForumDiscussions, getDiscussionPosts, addForumReply, addForumDiscussion } from "../services/moodle";
 import { ensureDriveFolder, uploadMoodleFileToDrive, listDriveFolders, createDriveFolder } from "../services/google";
 import { Btn, RenderMarkdown } from "../components/UI";
 import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader, Maximize2, Minimize2, Type, FolderOpen, ChevronRight, ChevronDown, Plus, ArrowLeft, FileSearch, MessageSquare, Megaphone, Users, Clock } from "lucide-react";
@@ -461,6 +461,16 @@ function ForumsSection({ forums, moodleToken, loading }) {
   const [expandedDisc, setExpandedDisc] = useState(null);
   const [aiSummary, setAiSummary] = useState(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  // Reply state
+  const [replyTo, setReplyTo] = useState(null); // { discId, postId }
+  const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [replySuccess, setReplySuccess] = useState(null);
+  // New discussion state
+  const [newDiscForum, setNewDiscForum] = useState(null); // forumId
+  const [newDiscSubject, setNewDiscSubject] = useState("");
+  const [newDiscMessage, setNewDiscMessage] = useState("");
+  const [newDiscSending, setNewDiscSending] = useState(false);
 
   const loadDiscussions = async (forumId) => {
     if (discussions[forumId]) {
@@ -541,6 +551,41 @@ function ForumsSection({ forums, moodleToken, loading }) {
 
   const stripHtml = (html) => (html || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
 
+  // Reply to a post
+  const handleReply = async (discId) => {
+    if (!replyText.trim() || !replyTo) return;
+    setReplySending(true);
+    try {
+      await addForumReply(moodleToken, replyTo.postId, replyText.trim());
+      setReplySuccess(discId);
+      setReplyText("");
+      setReplyTo(null);
+      // Reload posts for this discussion
+      const ps = await getDiscussionPosts(moodleToken, discId);
+      setPosts(p => ({ ...p, [discId]: ps }));
+      setTimeout(() => setReplySuccess(null), 3000);
+    } catch (e) {
+      alert("Error al responder: " + e.message);
+    }
+    setReplySending(false);
+  };
+
+  // Create a new discussion
+  const handleNewDiscussion = async (forumId) => {
+    if (!newDiscSubject.trim() || !newDiscMessage.trim()) return;
+    setNewDiscSending(true);
+    try {
+      await addForumDiscussion(moodleToken, forumId, newDiscSubject.trim(), newDiscMessage.trim());
+      setNewDiscSubject(""); setNewDiscMessage(""); setNewDiscForum(null);
+      // Reload discussions
+      const discs = await getForumDiscussions(moodleToken, forumId);
+      setDiscussions(p => ({ ...p, [forumId]: discs }));
+    } catch (e) {
+      alert("Error al crear tema: " + e.message);
+    }
+    setNewDiscSending(false);
+  };
+
   if (loading) {
     return (
       <div style={{ background: P.card, borderRadius: 16, border: `1px solid ${P.border}`, padding: 20 }}>
@@ -612,13 +657,44 @@ function ForumsSection({ forums, moodleToken, loading }) {
                     </div>
                   ) : (
                     <>
-                      {/* Summarize entire forum button */}
-                      <div style={{ padding: "8px 18px", borderBottom: `1px solid ${P.borderLight}` }}>
+                      {/* Summarize forum + New topic buttons */}
+                      <div style={{ padding: "8px 18px", borderBottom: `1px solid ${P.borderLight}`, display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button onClick={() => summarizeForum(forum)} disabled={aiSummaryLoading}
                           style={{ padding: "5px 12px", borderRadius: 6, background: P.redSoft, color: P.red, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, opacity: aiSummaryLoading ? 0.5 : 1 }}>
-                          <Sparkles size={12} /> Resumir todo el foro con IA
+                          <Sparkles size={12} /> Resumir con IA
                         </button>
+                        {forum.type !== "news" && (
+                          <button onClick={() => setNewDiscForum(newDiscForum === forum.id ? null : forum.id)}
+                            style={{ padding: "5px 12px", borderRadius: 6, background: "#E0E7FF", color: "#4F46E5", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                            <MessageSquare size={12} /> Nuevo tema
+                          </button>
+                        )}
                       </div>
+
+                      {/* New discussion form */}
+                      {newDiscForum === forum.id && (
+                        <div style={{ padding: "14px 18px", background: P.cream, borderBottom: `1px solid ${P.borderLight}` }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: P.text, marginBottom: 8 }}>Crear nuevo tema de discusión</div>
+                          <input type="text" value={newDiscSubject} onChange={e => setNewDiscSubject(e.target.value)}
+                            placeholder="Título del tema..."
+                            style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${P.border}`, fontSize: 13, fontFamily: ff.body, color: P.text, background: P.card, outline: "none", marginBottom: 8, boxSizing: "border-box" }}
+                          />
+                          <textarea value={newDiscMessage} onChange={e => setNewDiscMessage(e.target.value)} rows={3}
+                            placeholder="Escribí tu mensaje..."
+                            style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${P.border}`, fontSize: 13, fontFamily: ff.body, color: P.text, background: P.card, outline: "none", resize: "vertical", boxSizing: "border-box" }}
+                          />
+                          <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+                            <button onClick={() => { setNewDiscForum(null); setNewDiscSubject(""); setNewDiscMessage(""); }}
+                              style={{ padding: "6px 14px", borderRadius: 6, fontSize: 12, color: P.textMuted, background: P.borderLight, border: "none", cursor: "pointer" }}>
+                              Cancelar
+                            </button>
+                            <button onClick={() => handleNewDiscussion(forum.id)} disabled={!newDiscSubject.trim() || !newDiscMessage.trim() || newDiscSending}
+                              style={{ padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#fff", background: (!newDiscSubject.trim() || !newDiscMessage.trim()) ? P.border : "#4F46E5", border: "none", cursor: (!newDiscSubject.trim() || !newDiscMessage.trim()) ? "not-allowed" : "pointer" }}>
+                              {newDiscSending ? "Creando..." : "Publicar tema"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {forumDiscs.map(disc => {
                         const discId = disc.discussion || disc.id;
@@ -686,6 +762,10 @@ function ForumsSection({ forums, moodleToken, loading }) {
                                             </div>
                                             <span style={{ fontSize: 12, fontWeight: 600, color: P.text }}>{postAuthor}</span>
                                             <span style={{ fontSize: 11, color: P.textMuted }}>{postDate}</span>
+                                            <button onClick={() => setReplyTo({ discId, postId: post.id })}
+                                              style={{ marginLeft: "auto", fontSize: 11, color: P.red, fontWeight: 600, background: P.redSoft, padding: "2px 8px", borderRadius: 5, border: "none", cursor: "pointer" }}>
+                                              Responder
+                                            </button>
                                           </div>
                                           <div style={{ fontSize: 13, lineHeight: 1.6, color: P.textSec, paddingLeft: 34 }}>
                                             {postText.substring(0, 500)}
@@ -694,6 +774,35 @@ function ForumsSection({ forums, moodleToken, loading }) {
                                         </div>
                                       );
                                     })}
+
+                                    {/* Reply success message */}
+                                    {replySuccess === discId && (
+                                      <div style={{ padding: "10px 24px", color: "#059669", fontSize: 12, fontWeight: 600, background: "#ECFDF5" }}>
+                                        ✓ Respuesta enviada correctamente
+                                      </div>
+                                    )}
+
+                                    {/* Reply textarea */}
+                                    {replyTo?.discId === discId && (
+                                      <div style={{ padding: "12px 24px", background: P.cream, borderTop: `1px solid ${P.borderLight}` }}>
+                                        <div style={{ fontSize: 12, fontWeight: 600, color: P.textSec, marginBottom: 6 }}>Escribir respuesta:</div>
+                                        <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={3}
+                                          placeholder="Escribí tu respuesta..."
+                                          style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1.5px solid ${P.border}`, fontSize: 13, fontFamily: ff.body, color: P.text, background: P.card, outline: "none", resize: "vertical", boxSizing: "border-box" }}
+                                          onFocus={e => e.currentTarget.style.borderColor = P.red} onBlur={e => e.currentTarget.style.borderColor = P.border}
+                                        />
+                                        <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+                                          <button onClick={() => { setReplyTo(null); setReplyText(""); }}
+                                            style={{ padding: "6px 14px", borderRadius: 6, fontSize: 12, color: P.textMuted, background: P.borderLight, border: "none", cursor: "pointer" }}>
+                                            Cancelar
+                                          </button>
+                                          <button onClick={() => handleReply(discId)} disabled={!replyText.trim() || replySending}
+                                            style={{ padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#fff", background: !replyText.trim() ? P.border : P.red, border: "none", cursor: !replyText.trim() ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                                            {replySending ? "Enviando..." : "Enviar respuesta"}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
                                   </>
                                 )}
                               </div>
