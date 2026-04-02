@@ -410,27 +410,38 @@ async function moodleCall(body, env) {
   const { token, wsfunction, params } = body;
   if (!token || !wsfunction) return json({ error: "Faltan token o wsfunction" }, 400, env);
   const base = env.MOODLE_URL || MOODLE_URL;
-  const url = new URL(`${base}/webservice/rest/server.php`);
-  url.searchParams.set("wstoken", token);
-  url.searchParams.set("wsfunction", wsfunction);
-  url.searchParams.set("moodlewsrestformat", "json");
+  const url = `${base}/webservice/rest/server.php`;
 
-  // Handle params - Moodle expects arrays as param[0]=val0&param[1]=val1
+  // Build form data - Moodle expects POST with form-encoded params
+  const formData = new URLSearchParams();
+  formData.set("wstoken", token);
+  formData.set("wsfunction", wsfunction);
+  formData.set("moodlewsrestformat", "json");
+
   if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      if (Array.isArray(v)) {
-        v.forEach((item, i) => url.searchParams.set(`${k}[${i}]`, String(item)));
-      } else if (typeof v === "object" && v !== null) {
-        for (const [sk, sv] of Object.entries(v)) {
-          url.searchParams.set(`${k}[${sk}]`, String(sv));
+    const flatten = (obj, prefix = "") => {
+      for (const [k, v] of Object.entries(obj)) {
+        const key = prefix ? `${prefix}[${k}]` : k;
+        if (Array.isArray(v)) {
+          v.forEach((item, i) => {
+            if (typeof item === "object" && item !== null) flatten(item, `${key}[${i}]`);
+            else formData.append(`${key}[${i}]`, String(item));
+          });
+        } else if (typeof v === "object" && v !== null) {
+          flatten(v, key);
+        } else {
+          formData.append(key, String(v));
         }
-      } else {
-        url.searchParams.set(k, String(v));
       }
-    }
+    };
+    flatten(params);
   }
 
-  const res = await fetch(url.toString());
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: formData.toString(),
+  });
   const data = await res.json();
   if (data.exception) return json({ error: data.message || data.exception }, 400, env);
   return json(data, 200, env);
