@@ -107,13 +107,14 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
         <button onClick={onToggleDark}
           style={{
             width: "100%", display: "flex", alignItems: "center", gap: 10,
-            padding: open ? "10px 20px" : "10px 0", justifyContent: open ? "flex-start" : "center",
-            color: "rgba(255,255,255,0.5)", fontSize: 13, transition: "all 0.2s",
+            padding: open ? "12px 20px" : "12px 0", justifyContent: open ? "flex-start" : "center",
+            color: "rgba(255,255,255,0.7)", fontSize: 13, transition: "all 0.2s",
+            background: "rgba(255,255,255,0.04)", borderRadius: 0,
           }}
-          onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.8)"}
-          onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.5)"}>
+          onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
+          onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.7)"; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}>
           {dark ? <Sun size={18} /> : <Moon size={18} />}
-          {open && <span>{dark ? "Modo claro" : "Modo oscuro"}</span>}
+          {open && <span style={{ fontWeight: 500 }}>{dark ? "Modo claro" : "Modo oscuro"}</span>}
         </button>
 
         {/* User */}
