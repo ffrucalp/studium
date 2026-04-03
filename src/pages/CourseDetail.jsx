@@ -406,24 +406,18 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
       return;
     }
 
-    // Clean fragmented text first
-    const cleanPrompt = `El siguiente texto fue extraído de un PDF y puede tener caracteres sueltos o palabras cortadas. Reconstruí el texto original uniendo los fragmentos de manera coherente. Devolvé SOLO el texto reconstruido sin explicaciones:\n\n${text.substring(0, 6000)}`;
-    let cleanText;
-    try {
-      cleanText = await callAI(cleanPrompt);
-    } catch {
-      cleanText = text;
-    }
-
-    const prompts = {
-      resumir: `Resumí el siguiente texto académico de forma clara y estructurada en español. Usá títulos y puntos clave:\n\n${cleanText.substring(0, 8000)}`,
-      conceptos: `Extraé los conceptos clave del siguiente texto académico. Para cada concepto, da una definición breve. Respondé en español:\n\n${cleanText.substring(0, 8000)}`,
-      preguntas: `Generá 10 preguntas de repaso (con sus respuestas) basadas en el siguiente texto académico. Respondé en español:\n\n${cleanText.substring(0, 8000)}`,
-      explicar: `Explicá el contenido del siguiente texto académico de forma simple y didáctica, como si le explicaras a un estudiante. Usá ejemplos. Respondé en español:\n\n${cleanText.substring(0, 8000)}`,
+    // Single AI call: clean fragmented text + do the action in one prompt
+    const actionInstructions = {
+      resumir: "Resumí el contenido de forma clara y estructurada. Usá títulos y puntos clave.",
+      conceptos: "Extraé los conceptos clave. Para cada concepto, da una definición breve.",
+      preguntas: "Generá 10 preguntas de repaso con sus respuestas basadas en el contenido.",
+      explicar: "Explicá el contenido de forma simple y didáctica, como si le explicaras a un estudiante. Usá ejemplos.",
     };
 
+    const prompt = `El siguiente texto fue extraído de un PDF académico y puede tener palabras cortadas o caracteres sueltos. Primero reconstruí mentalmente el texto original, y luego cumplí esta instrucción:\n\n**Instrucción:** ${actionInstructions[action]}\n\nRespondé en español.\n\n---\nTexto extraído:\n${text.substring(0, 10000)}`;
+
     try {
-      const result = await callAI(prompts[action] || prompts.resumir);
+      const result = await callAI(prompt);
       setAiResult(result);
     } catch (e) {
       setAiResult("Error al procesar: " + e.message);
