@@ -6,6 +6,7 @@ import { generateCourseSummary, generateQuiz, callAI } from "../services/ai";
 import { extractFileText, downloadFile, getForumsByCourse, getForumDiscussions, getDiscussionPosts, addForumReply, addForumDiscussion } from "../services/moodle";
 import { ensureDriveFolder, uploadMoodleFileToDrive, listDriveFolders, createDriveFolder } from "../services/google";
 import { Btn, RenderMarkdown } from "../components/UI";
+import ShareButtons from "../components/ShareButtons";
 import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader, Maximize2, Minimize2, Type, FolderOpen, ChevronRight, ChevronDown, Plus, ArrowLeft, FileSearch, MessageSquare, Megaphone, Users, Clock } from "lucide-react";
 
 const FILE_COLORS = {
@@ -830,7 +831,12 @@ function ForumsSection({ forums, moodleToken, loading }) {
           <div style={{ padding: "14px 18px", maxHeight: 400, overflow: "auto" }}>
             {aiSummaryLoading ? (
               <div>{[1, 2, 3, 4].map(i => <div key={i} className="shimmer" style={{ height: i === 1 ? 22 : 16, marginBottom: 10, width: `${60 + Math.random() * 40}%` }} />)}</div>
-            ) : <RenderMarkdown text={aiSummary} />}
+            ) : <>
+              <RenderMarkdown text={aiSummary} />
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${P.borderLight}` }}>
+                <ShareButtons text={aiSummary} title="Resumen del foro" />
+              </div>
+            </>}
           </div>
         </div>
       )}
@@ -1186,7 +1192,12 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
                 <div style={{ padding: "14px 18px", maxHeight: 400, overflow: "auto" }}>
                   {summaryLoading ? (
                     <div>{[1,2,3,4,5].map(i => <div key={i} className="shimmer" style={{ height: i === 1 ? 22 : 16, marginBottom: 10, width: `${50 + Math.random() * 50}%` }} />)}</div>
-                  ) : <RenderMarkdown text={summaryData} />}
+                  ) : <>
+                    <RenderMarkdown text={summaryData} />
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${P.borderLight}` }}>
+                      <ShareButtons text={summaryData} title={`Resumen — ${course.fullname}`} />
+                    </div>
+                  </>}
                 </div>
               </div>
             )}

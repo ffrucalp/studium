@@ -3,6 +3,7 @@ import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
 import { chatWithTutor } from "../services/ai";
 import { RenderMarkdown } from "../components/UI";
+import ShareButtons from "../components/ShareButtons";
 import { Sparkles, Send } from "lucide-react";
 
 export default function Chat() {
@@ -88,7 +89,12 @@ export default function Chat() {
                 boxShadow: msg.role === "user" ? "0 2px 10px rgba(183,28,28,0.2)" : "0 1px 4px rgba(0,0,0,0.03)",
               }}
             >
-              {msg.role === "assistant" ? <RenderMarkdown text={msg.text} /> : msg.text}
+              {msg.role === "assistant" ? <>
+                <RenderMarkdown text={msg.text} />
+                <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${P.borderLight}` }}>
+                  <ShareButtons text={msg.text} title="Respuesta del Tutor IA" compact />
+                </div>
+              </> : msg.text}
             </div>
           </div>
         ))}

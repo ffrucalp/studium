@@ -4,6 +4,7 @@ import { useApp } from "../context/AppContext";
 import { generateStudyPlan } from "../services/ai";
 import { createCalendarEvent, sendStudyReminder, syncStudyPlanToCalendar } from "../services/google";
 import { Btn } from "../components/UI";
+import ShareButtons from "../components/ShareButtons";
 import { Calendar, Clock, RefreshCw, Mail, Upload } from "lucide-react";
 
 export default function Planner() {
@@ -95,6 +96,16 @@ export default function Planner() {
           )}
         </div>
       </div>
+
+      {/* Share plan */}
+      {data?.days && (
+        <div style={{ marginBottom: 16 }}>
+          <ShareButtons
+            title="Plan de estudio semanal"
+            text={data.days.map(d => `${d.day}:\n${(d.blocks || []).map(b => `  ${b.time || ""} — ${b.course}: ${b.task || ""}${b.technique ? ` (${b.technique})` : ""}`).join("\n")}`).join("\n\n")}
+          />
+        </div>
+      )}
 
       {/* Loading skeleton */}
       {loading && (

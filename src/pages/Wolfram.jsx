@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { P, ff } from "../styles/theme";
 import { Btn } from "../components/UI";
+import ShareButtons from "../components/ShareButtons";
 import { CONFIG } from "../config";
 import {
   Calculator, Send, Loader2, Trash2,
@@ -140,6 +141,11 @@ export default function Wolfram() {
               {item.original && item.original !== item.text && (
                 <div style={{ fontSize: 11, color: P.textMuted, marginTop: 6, fontFamily: ff.body, fontWeight: 400 }}>
                   Original: {item.original}
+                </div>
+              )}
+              {item.type === "answer" && (
+                <div style={{ marginTop: 8, paddingTop: 6, borderTop: `1px solid ${P.borderLight}` }}>
+                  <ShareButtons text={`${item.query || ""}\n→ ${item.text}`} title="Cálculo Wolfram Alpha" compact />
                 </div>
               )}
             </div>

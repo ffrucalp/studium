@@ -66,10 +66,10 @@ export default function DriveModal({ onClose }) {
   const loadFiles = async (folderId) => {
     setLoading(true);
     try {
-      const data = await listDriveFiles(googleAccessToken, folderId);
+      const fileList = await listDriveFiles(googleAccessToken, folderId);
       const folders = await listDriveFolders(googleAccessToken, folderId);
       const folderItems = (folders?.folders || []).map(f => ({ ...f, mimeType: "application/vnd.google-apps.folder", isFolder: true }));
-      const fileItems = (data?.files || []).filter(f => f.mimeType !== "application/vnd.google-apps.folder");
+      const fileItems = (fileList || []).filter(f => f.mimeType !== "application/vnd.google-apps.folder");
       setFiles([...folderItems, ...fileItems]);
     } catch (e) { console.error(e); setFiles([]); }
     setLoading(false);

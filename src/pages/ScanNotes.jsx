@@ -2,13 +2,14 @@ import { useState, useRef } from "react";
 import { P, ff } from "../styles/theme";
 import { Btn } from "../components/UI";
 import { RenderMarkdown } from "../components/UI";
+import ShareButtons from "../components/ShareButtons";
 import { CONFIG } from "../config";
 import {
   Camera, Upload, FileText, Loader2, Download, Copy, CheckCircle,
   Printer, Trash2, Image, Plus, X, Sparkles,
 } from "lucide-react";
 
-const VISION_MODEL = "google/gemini-2.0-flash-001";
+const VISION_MODEL = "google/gemini-flash-1.5-8b";
 const AI_URL = `${CONFIG.API_BASE}/api/ai`;
 
 const SYSTEM_PROMPT = `Sos un asistente académico experto en digitalización de apuntes universitarios.
@@ -230,6 +231,11 @@ export default function ScanNotes() {
               onMouseEnter={(e) => { e.currentTarget.style.color = P.red; }} onMouseLeave={(e) => { e.currentTarget.style.color = P.textMuted; }}>
               <Trash2 size={14} /> Nueva digitalización
             </button>
+          </div>
+
+          {/* Share */}
+          <div style={{ marginBottom: 16 }}>
+            <ShareButtons text={result} title="Apuntes digitalizados" />
           </div>
 
           {/* Preview of images used */}
