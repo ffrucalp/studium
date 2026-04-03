@@ -253,39 +253,70 @@ Reglas:
 }
 
 /**
- * Professional SVG concept map renderer
+ * Split text into lines that fit within a max character width
+ */
+function wrapText(text, maxChars = 30) {
+  if (!text || text.length <= maxChars) return [text || ""];
+  const words = text.split(" ");
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    if (current && (current + " " + word).length > maxChars) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? current + " " + word : word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+/**
+ * Professional SVG concept map renderer with text wrapping
  */
 function ProfessionalMap({ data, svgRef }) {
   const cols = data.columns || [];
   const numCols = cols.length;
-  const colWidth = 260;
-  const colGap = 30;
-  const totalW = numCols * colWidth + (numCols - 1) * colGap + 80;
+  const colWidth = 280;
+  const colGap = 24;
+  const marginX = 40;
+  const totalW = numCols * colWidth + (numCols - 1) * colGap + marginX * 2;
   const svgW = Math.max(totalW, 800);
   const centerX = svgW / 2;
+  const lineH = 15; // line height for wrapped text
+  const cardPadTop = 14;
+  const cardPadBot = 12;
+  const itemGap = 14;
 
-  // Calculate heights per column
-  const colHeights = cols.map(col => {
-    const headerH = 50;
-    const itemH = col.items.reduce((sum, item) => {
-      const lines = 2 + (item.details?.length || 0);
-      return sum + Math.max(70, lines * 18 + 30);
-    }, 0);
-    const gaps = (col.items.length - 1) * 12;
-    return headerH + 20 + itemH + gaps;
+  // Pre-calculate wrapped text and card heights for each item
+  const colData = cols.map((col) => {
+    const items = col.items.map((item) => {
+      const nameLines = wrapText(item.name, 28);
+      const highlightLines = wrapText(item.highlight, 32);
+      const detailLines = (item.details || []).flatMap(d => wrapText(d, 34));
+      const totalLines = nameLines.length + highlightLines.length + detailLines.length;
+      const cardH = cardPadTop + totalLines * lineH + (highlightLines.length > 0 ? 6 : 0) + (detailLines.length > 0 ? 6 : 0) + cardPadBot;
+      return { ...item, nameLines, highlightLines, detailLines, cardH };
+    });
+    const headerH = 44;
+    const totalItemH = items.reduce((s, it) => s + it.cardH, 0) + (items.length - 1) * itemGap;
+    return { ...col, items, headerH, totalH: headerH + 20 + totalItemH };
   });
-  const maxColH = Math.max(...colHeights, 200);
+
+  const maxColH = Math.max(...colData.map(c => c.totalH), 200);
   const titleH = 90;
   const centralH = 60;
   const connectorH = 40;
-  const notesH = data.notes?.length ? 30 + data.notes.length * 20 + 20 : 0;
-  const svgH = titleH + centralH + connectorH + maxColH + 40 + notesH;
-
+  const notesH = data.notes?.length ? 20 + data.notes.length * 18 + 20 : 0;
+  const svgH = titleH + centralH + connectorH + maxColH + 30 + notesH;
   const colStartY = titleH + centralH + connectorH;
+
+  // Column X positions
+  const colXs = colData.map((_, ci) => marginX + ci * (colWidth + colGap));
 
   return (
     <svg ref={svgRef} width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} xmlns="http://www.w3.org/2000/svg" style={{ display: "block", margin: "0 auto", maxWidth: "100%" }}>
-      {/* Background */}
       <rect width={svgW} height={svgH} fill="#f8fafc" rx="12" />
 
       {/* Title */}
@@ -299,66 +330,90 @@ function ProfessionalMap({ data, svgRef }) {
       )}
 
       {/* Central node */}
-      <rect x={centerX - 160} y={titleH} width={320} height={50} rx={12} fill="#1e293b" />
-      <text x={centerX} y={titleH + 32} fontFamily="Arial, sans-serif" fontSize="18" fontWeight="bold" textAnchor="middle" fill="white">
-        {data.central || "CONCEPTO CENTRAL"}
-      </text>
-
-      {/* Connecting lines from center to columns */}
-      {cols.map((_, ci) => {
-        const colX = 40 + ci * (colWidth + colGap) + colWidth / 2;
+      {(() => {
+        const centralLines = wrapText(data.central || "CONCEPTO CENTRAL", 30);
+        const cH = 20 + centralLines.length * 22;
         return (
-          <g key={`line-${ci}`} stroke="#cbd5e1" strokeWidth="2" fill="none">
-            <path d={`M${centerX} ${titleH + 50} L${centerX} ${titleH + 50 + 15}`} />
-            <path d={`M${40 + colWidth / 2} ${titleH + 50 + 15} L${40 + (numCols - 1) * (colWidth + colGap) + colWidth / 2} ${titleH + 50 + 15}`} />
-            <path d={`M${colX} ${titleH + 50 + 15} L${colX} ${colStartY}`} />
-          </g>
+          <>
+            <rect x={centerX - 170} y={titleH} width={340} height={cH} rx={12} fill="#1e293b" />
+            {centralLines.map((line, li) => (
+              <text key={li} x={centerX} y={titleH + 22 + li * 22} fontFamily="Arial, sans-serif" fontSize="18" fontWeight="bold" textAnchor="middle" fill="white">
+                {line}
+              </text>
+            ))}
+          </>
         );
-      })}
+      })()}
+
+      {/* Connecting lines */}
+      <g stroke="#cbd5e1" strokeWidth="2" fill="none">
+        <line x1={centerX} y1={titleH + 54} x2={centerX} y2={titleH + 54 + 16} />
+        <line x1={colXs[0] + colWidth / 2} y1={titleH + 54 + 16} x2={colXs[numCols - 1] + colWidth / 2} y2={titleH + 54 + 16} />
+        {colXs.map((cx, ci) => (
+          <line key={ci} x1={cx + colWidth / 2} y1={titleH + 54 + 16} x2={cx + colWidth / 2} y2={colStartY} />
+        ))}
+      </g>
 
       {/* Columns */}
-      {cols.map((col, ci) => {
+      {colData.map((col, ci) => {
         const color = COL_COLORS[ci % COL_COLORS.length];
-        const colX = 40 + ci * (colWidth + colGap);
+        const colX = colXs[ci];
         let curY = colStartY;
 
         return (
           <g key={`col-${ci}`}>
             {/* Header */}
-            <rect x={colX} y={curY} width={colWidth} height={44} rx={8} fill={color.bg} />
+            <rect x={colX} y={curY} width={colWidth} height={col.headerH} rx={8} fill={color.bg} />
             <text x={colX + colWidth / 2} y={curY + 28} fontFamily="Arial, sans-serif" fontSize="13" fontWeight="bold" textAnchor="middle" fill="white">
               {col.header}
             </text>
 
             {/* Items */}
             {col.items.map((item, ii) => {
-              const itemY = curY + 44 + 16 + ii * 100;
-              const cardH = 20 + 18 + (item.details?.length || 0) * 16 + 16;
+              // Calculate Y based on previous items
+              const prevItemsH = col.items.slice(0, ii).reduce((s, it) => s + it.cardH + itemGap, 0);
+              const itemY = curY + col.headerH + 20 + prevItemsH;
+
+              // Connection line
+              const lineFromY = ii === 0 ? curY + col.headerH : itemY - itemGap / 2;
+
+              let textY = itemY + cardPadTop;
 
               return (
                 <g key={`item-${ci}-${ii}`}>
-                  {/* Connection line */}
-                  <line x1={colX + colWidth / 2} y1={ii === 0 ? curY + 44 : itemY - 12} x2={colX + colWidth / 2} y2={itemY} stroke={color.border} strokeWidth="1.5" />
+                  <line x1={colX + colWidth / 2} y1={lineFromY} x2={colX + colWidth / 2} y2={itemY} stroke={color.border} strokeWidth="1.5" />
 
-                  {/* Card */}
-                  <rect x={colX + 5} y={itemY} width={colWidth - 10} height={cardH} rx={6} fill="white" stroke={color.bg} strokeWidth="1.5" />
+                  <rect x={colX + 4} y={itemY} width={colWidth - 8} height={item.cardH} rx={6} fill="white" stroke={color.bg} strokeWidth="1.5" />
 
-                  {/* Name */}
-                  <text x={colX + colWidth / 2} y={itemY + 18} fontFamily="Arial, sans-serif" fontSize="13" fontWeight="bold" textAnchor="middle" fill={color.text}>
-                    {item.name}
-                  </text>
+                  {/* Name lines */}
+                  {item.nameLines.map((line, li) => {
+                    const y = textY + li * lineH;
+                    return (
+                      <text key={`n${li}`} x={colX + colWidth / 2} y={y + 10} fontFamily="Arial, sans-serif" fontSize="13" fontWeight="bold" textAnchor="middle" fill={color.text}>
+                        {line}
+                      </text>
+                    );
+                  })}
 
-                  {/* Highlight */}
-                  <text x={colX + colWidth / 2} y={itemY + 36} fontFamily="Arial, sans-serif" fontSize="11" fontWeight="bold" textAnchor="middle" fill={color.bg}>
-                    {item.highlight}
-                  </text>
+                  {/* Highlight lines */}
+                  {item.highlightLines.map((line, li) => {
+                    const y = textY + (item.nameLines.length + li) * lineH + 6;
+                    return (
+                      <text key={`h${li}`} x={colX + colWidth / 2} y={y + 10} fontFamily="Arial, sans-serif" fontSize="11" fontWeight="bold" textAnchor="middle" fill={color.bg}>
+                        {line}
+                      </text>
+                    );
+                  })}
 
-                  {/* Details */}
-                  {item.details?.map((detail, di) => (
-                    <text key={di} x={colX + colWidth / 2} y={itemY + 52 + di * 15} fontFamily="Arial, sans-serif" fontSize="10" textAnchor="middle" fill="#64748b">
-                      {detail.length > 35 ? detail.substring(0, 33) + "…" : detail}
-                    </text>
-                  ))}
+                  {/* Detail lines */}
+                  {item.detailLines.map((line, li) => {
+                    const y = textY + (item.nameLines.length + item.highlightLines.length + li) * lineH + 12;
+                    return (
+                      <text key={`d${li}`} x={colX + colWidth / 2} y={y + 10} fontFamily="Arial, sans-serif" fontSize="10" textAnchor="middle" fill="#64748b">
+                        {line}
+                      </text>
+                    );
+                  })}
                 </g>
               );
             })}
@@ -369,15 +424,18 @@ function ProfessionalMap({ data, svgRef }) {
       {/* Notes */}
       {data.notes?.length > 0 && (
         <g>
-          <rect x={40} y={svgH - notesH - 10} width={svgW - 80} height={notesH} rx={10} fill="#eff6ff" stroke="#bfdbfe" strokeWidth="1" />
-          <text x={60} y={svgH - notesH + 18} fontFamily="Arial, sans-serif" fontSize="12" fontWeight="bold" fill="#1e40af">
+          <rect x={marginX} y={svgH - notesH - 10} width={svgW - marginX * 2} height={notesH} rx={10} fill="#eff6ff" stroke="#bfdbfe" strokeWidth="1" />
+          <text x={marginX + 20} y={svgH - notesH + 14} fontFamily="Arial, sans-serif" fontSize="12" fontWeight="bold" fill="#1e40af">
             Notas del mapa:
           </text>
-          {data.notes.map((note, ni) => (
-            <text key={ni} x={60} y={svgH - notesH + 38 + ni * 18} fontFamily="Arial, sans-serif" fontSize="11" fill="#3b82f6">
-              • {note.length > 100 ? note.substring(0, 98) + "…" : note}
-            </text>
-          ))}
+          {data.notes.map((note, ni) => {
+            const noteLines = wrapText(note, 90);
+            return noteLines.map((line, li) => (
+              <text key={`${ni}-${li}`} x={marginX + 20} y={svgH - notesH + 32 + ni * 18 + li * 14} fontFamily="Arial, sans-serif" fontSize="11" fill="#3b82f6">
+                {li === 0 ? `• ${line}` : `  ${line}`}
+              </text>
+            ));
+          })}
         </g>
       )}
     </svg>
