@@ -325,8 +325,6 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
   const [aiResult, setAiResult] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiAction, setAiAction] = useState("");
-  const [extractedText, setExtractedText] = useState(null);
-  const [extracting, setExtracting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -375,48 +373,13 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
     };
   }, [mat, moodleToken]);
 
-  // Extract text for AI
-  const doExtract = async () => {
-    if (extractedText) return extractedText;
-    setExtracting(true);
-    try {
-      const result = await extractFileText(moodleToken, mat.files[0].fileurl);
-      setExtractedText(result.text);
-      setExtracting(false);
-      return result.text;
-    } catch {
-      setExtracting(false);
-      return null;
-    }
-  };
-
-  // AI action handler
+  // AI action handler - always use vision since PDF is already downloaded
   const handleAI = async (action) => {
     setAiOpen(true);
     setAiAction(action);
     setAiResult(null);
     setAiLoading(true);
 
-    let text = extractedText;
-    if (!text) text = await doExtract();
-
-    if (!text || text.length < 20) {
-      // Text extraction failed — try vision AI with the PDF
-      try {
-        const file = mat.files?.[0];
-        const data = await downloadFile(moodleToken, file.fileurl);
-        const prompt = `Analizá este documento PDF. ${actionInstructions[action]}\n\nRespondé en español.`;
-        const images = [{ data: data.content, mimeType: "application/pdf" }];
-        const result = await callAI(prompt, undefined, images);
-        setAiResult(result);
-      } catch (e) {
-        setAiResult("No se pudo procesar este archivo. Probá con la función **Digitalizar apuntes** tomando capturas de pantalla del PDF.");
-      }
-      setAiLoading(false);
-      return;
-    }
-
-    // Single AI call: clean fragmented text + do the action in one prompt
     const actionInstructions = {
       resumir: "Resumí el contenido de forma clara y estructurada. Usá títulos y puntos clave.",
       conceptos: "Extraé los conceptos clave. Para cada concepto, da una definición breve.",
@@ -424,10 +387,12 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
       explicar: "Explicá el contenido de forma simple y didáctica, como si le explicaras a un estudiante. Usá ejemplos.",
     };
 
-    const prompt = `El siguiente texto fue extraído de un PDF académico y puede tener palabras cortadas o caracteres sueltos. Primero reconstruí mentalmente el texto original, y luego cumplí esta instrucción:\n\n**Instrucción:** ${actionInstructions[action]}\n\nRespondé en español.\n\n---\nTexto extraído:\n${text.substring(0, 10000)}`;
-
     try {
-      const result = await callAI(prompt);
+      const file = mat.files?.[0];
+      const data = await downloadFile(moodleToken, file.fileurl);
+      const prompt = `Analizá este documento PDF académico universitario. ${actionInstructions[action]}\n\nRespondé en español de forma académica y clara.`;
+      const images = [{ data: data.content, mimeType: "application/pdf" }];
+      const result = await callAI(prompt, undefined, images);
       setAiResult(result);
     } catch (e) {
       setAiResult("Error al procesar: " + e.message);
@@ -504,16 +469,10 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
               <button onClick={() => setAiOpen(false)} style={{ color: P.textMuted, padding: 4, fontSize: 16 }}>✕</button>
             </div>
             <div style={{ flex: 1, overflow: "auto", padding: "14px 16px" }}>
-              {extracting && (
-                <div style={{ textAlign: "center", padding: 20, color: P.textMuted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                  <div style={{ width: 14, height: 14, border: `2px solid ${P.redMuted}`, borderTopColor: P.red, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                  Extrayendo texto...
-                </div>
-              )}
-              {aiLoading && !extracting && (
+              {aiLoading && (
                 <div style={{ textAlign: "center", padding: 20, color: P.textMuted, fontSize: 13 }}>
                   <div style={{ width: 14, height: 14, border: `2px solid ${P.redMuted}`, borderTopColor: P.red, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 10px" }} />
-                  Analizando con IA...
+                  Analizando PDF con IA...
                 </div>
               )}
               {aiResult && !aiLoading && (
