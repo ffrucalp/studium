@@ -53,17 +53,19 @@ export default function Quizzes() {
 
     const load = async () => {
       const courseIds = courses.map(c => c.id);
-      const data = await getQuizzesByCourses(moodleToken, courseIds);
-      if (cancelled) return;
-
+      // Batch in groups of 5 to avoid too-long URLs
       const allQuizzes = [];
-      for (const courseGroup of (data?.courses || [])) {
-        const course = courses.find(c => c.id === courseGroup.id);
-        for (const quiz of (courseGroup.quizzes || [])) {
+      for (let i = 0; i < courseIds.length; i += 5) {
+        const batch = courseIds.slice(i, i + 5);
+        const data = await getQuizzesByCourses(moodleToken, batch);
+        if (cancelled) return;
+        // API returns { quizzes: [...] } - each quiz has a .course field with course ID
+        for (const quiz of (data?.quizzes || [])) {
+          const course = courses.find(c => c.id === quiz.course);
           allQuizzes.push({
             ...quiz,
-            courseName: course?.fullname || courseGroup.fullname || "",
-            courseShortname: course?.shortname || courseGroup.shortname || "",
+            courseName: course?.fullname || "",
+            courseShortname: course?.shortname || "",
             courseColor: course?.color || P.red,
           });
         }
