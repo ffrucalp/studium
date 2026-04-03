@@ -35,6 +35,17 @@ export default function App() {
     try { localStorage.setItem("studium_screen", screen); } catch {}
   }, [screen]);
 
+  // Restore selected course on refresh
+  useEffect(() => {
+    if (courses.length === 0) return;
+    const savedId = localStorage.getItem("studium_courseId");
+    if (screen === "course" && !selectedCourse && savedId) {
+      const c = courses.find(c => String(c.id) === savedId);
+      if (c) setSelectedCourse(c);
+      else setScreen("courses"); // course not found → go to list
+    }
+  }, [courses, screen, selectedCourse, setSelectedCourse]);
+
   // Dark mode toggle
   const toggleDark = useCallback(() => {
     const newVal = !dark;
@@ -95,6 +106,7 @@ export default function App() {
     setSelectedCourse(null);
     setQuizCourse(null);
     setMobileMenuOpen(false);
+    try { localStorage.removeItem("studium_courseId"); } catch {}
   };
 
   const selectCourse = (course) => {
@@ -102,6 +114,7 @@ export default function App() {
     setSelectedCourse(course);
     setScreen("course");
     setMobileMenuOpen(false);
+    try { localStorage.setItem("studium_courseId", String(course.id)); } catch {}
   };
 
   const navigateQuiz = (course) => {
@@ -120,7 +133,7 @@ export default function App() {
             onBack={() => history.back()}
             onNavigateChat={() => { pushHistory("chat"); setScreen("chat"); }}
             onNavigateQuiz={navigateQuiz} />
-        ) : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+        ) : <CoursesPage onSelectCourse={selectCourse} />;
       case "chat": return <Chat />;
       case "courses": return <CoursesPage onSelectCourse={selectCourse} />;
       case "messages": return <MessagesPage />;
