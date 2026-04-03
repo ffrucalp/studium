@@ -65,3 +65,34 @@ input {
   animation: shimmer 1.5s infinite;
   border-radius: 8px;
 }
+
+/* ─── Responsive ─────────────────────────────────────── */
+@media (max-width: 768px) {
+  .studium-main {
+    padding: 16px 14px !important;
+  }
+  .studium-sidebar {
+    position: fixed !important;
+    z-index: 900;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  .studium-sidebar.open {
+    transform: translateX(0);
+  }
+  .studium-overlay {
+    display: block !important;
+  }
+  .studium-hamburger {
+    display: flex !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .studium-overlay {
+    display: none !important;
+  }
+  .studium-hamburger {
+    display: none !important;
+  }
+}

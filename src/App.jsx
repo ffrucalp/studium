@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { P, ff } from "./styles/theme";
+import { P, ff, setDark, isDarkMode } from "./styles/theme";
 import { useApp } from "./context/AppContext";
 import Sidebar from "./components/Sidebar";
 import Login from "./pages/Login";
@@ -19,6 +19,7 @@ import CoursesPage from "./pages/Courses";
 import MessagesPage from "./pages/Messages";
 import LiveChatPage from "./pages/LiveChat";
 import QuizzesPage from "./pages/Quizzes";
+import ClassmatesPage from "./pages/Classmates";
 
 export default function App() {
   const { user, moodleToken, courses, selectedCourse, setSelectedCourse, loginWithGoogle, setGoogleTokens } = useApp();
@@ -26,11 +27,20 @@ export default function App() {
     try { return localStorage.getItem("studium_screen") || "dashboard"; } catch { return "dashboard"; }
   });
   const [quizCourse, setQuizCourse] = useState(null);
+  const [dark, setDarkState] = useState(isDarkMode());
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Persist screen on change
   useEffect(() => {
     try { localStorage.setItem("studium_screen", screen); } catch {}
   }, [screen]);
+
+  // Dark mode toggle
+  const toggleDark = useCallback(() => {
+    const newVal = !dark;
+    setDark(newVal);
+    setDarkState(newVal);
+  }, [dark]);
 
   // ── Browser history management ──
   const pushHistory = useCallback((newScreen, courseId = null) => {
@@ -84,12 +94,14 @@ export default function App() {
     setScreen(target);
     setSelectedCourse(null);
     setQuizCourse(null);
+    setMobileMenuOpen(false);
   };
 
   const selectCourse = (course) => {
     pushHistory("course", course.id);
     setSelectedCourse(course);
     setScreen("course");
+    setMobileMenuOpen(false);
   };
 
   const navigateQuiz = (course) => {
@@ -114,6 +126,7 @@ export default function App() {
       case "messages": return <MessagesPage />;
       case "livechat": return <LiveChatPage />;
       case "quizzes": return <QuizzesPage />;
+      case "classmates": return <ClassmatesPage />;
       case "career": return <Career />;
       case "library": return <LibraryPage />;
       case "wolfram": return <WolframPage />;
@@ -126,9 +139,35 @@ export default function App() {
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", background: P.bg, fontFamily: ff.body }}>
-      <Sidebar currentScreen={screen} onNavigate={navigate} />
-      <main style={{ flex: 1, overflow: "auto", padding: "28px 32px" }}>
+    <div style={{ display: "flex", height: "100vh", background: P.bg, fontFamily: ff.body, transition: "background 0.3s" }}>
+      {/* Mobile overlay */}
+      {mobileMenuOpen && (
+        <div className="studium-overlay"
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 899 }}
+          onClick={() => setMobileMenuOpen(false)} />
+      )}
+
+      {/* Hamburger button - mobile only */}
+      <button className="studium-hamburger"
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        style={{
+          display: "none", position: "fixed", top: 12, left: 12, zIndex: 901,
+          width: 40, height: 40, borderRadius: 10, background: P.sidebar, color: "#fff",
+          alignItems: "center", justifyContent: "center", border: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
+        }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+
+      <Sidebar
+        currentScreen={screen}
+        onNavigate={navigate}
+        dark={dark}
+        onToggleDark={toggleDark}
+        mobileOpen={mobileMenuOpen}
+      />
+      <main className="studium-main" style={{ flex: 1, overflow: "auto", padding: "28px 32px", transition: "background 0.3s" }}>
         {renderScreen()}
       </main>
     </div>
