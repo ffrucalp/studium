@@ -33,63 +33,85 @@ function fileSize(bytes) {
 function FormattedContent({ text }) {
   if (!text) return null;
 
-  // Clean garbled characters
+  // Step 1: Clean garbled characters but preserve Spanish
   let clean = text
     .replace(/[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
-    .replace(/[^\x20-\x7E\u00A0-\u024F\u1E00-\u1EFF\n\r\t]/g, "")
     .replace(/\r\n?/g, "\n")
     .trim();
 
-  // Heading patterns common in academic PDFs (Spanish)
-  const headingPatterns = [
-    /(?:^|\n)\s*((?:SEMANA|UNIDAD|TEMA|MÓDULO|SECCIÓN|CAPÍTULO|PARTE|CLASE|ENCUENTRO|BLOQUE)\s*\d*[.:—\-]?\s*[^\n]{0,120})/gi,
-    /(?:^|\n)\s*((?:EJE TRANSVERSAL|INTRODUCCIÓN|CONCLUSIÓN|BIBLIOGRAFÍA|RESUMEN|OBJETIVOS|CONTENIDOS|METODOLOGÍA|EVALUACIÓN|CRONOGRAMA|PROGRAMA|FUNDAMENTACIÓN|ACTIVIDAD|FORO|ENTREGA|LECTURA|ENCUENTRO SINCRÓNICO|CRITERIOS DE APROBACIÓN)[.:—\-]?\s*[^\n]{0,120})/gi,
-    /(?:^|\n)\s*((?:FACULTAD|CARRERA|ASIGNATURA|PRIMER PARCIAL|SEGUNDO PARCIAL|TRABAJO PRÁCTICO|TP \d+)[.:—\-]?\s*[^\n]{0,120})/gi,
-  ];
+  // Step 2: Join lines that were split mid-sentence by PDF extraction
+  // If a line doesn't end with punctuation/colon and next starts with lowercase → join
+  const rawLines = clean.split("\n");
+  const joined = [];
+  let current = "";
 
-  // Step 1: Insert newlines before heading patterns if missing
-  for (const pattern of headingPatterns) {
-    clean = clean.replace(pattern, (match, heading) => {
-      return "\n\n" + heading.trim();
-    });
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (!line) {
+      if (current) { joined.push(current); current = ""; }
+      joined.push(""); // paragraph break
+      continue;
+    }
+
+    if (!current) {
+      current = line;
+    } else {
+      // Check if previous line ended mid-sentence
+      const endsWithPunct = /[.!?:;,\-—]$/.test(current);
+      const nextStartsLower = /^[a-záéíóúñü]/.test(line);
+      const currentShort = current.length < 80;
+      const lineShort = line.length < 15;
+
+      if (!endsWithPunct && nextStartsLower && !lineShort) {
+        // Join: mid-sentence break
+        current += " " + line;
+      } else if (!endsWithPunct && currentShort && line.length > 10 && !/^[A-ZÁÉÍÓÚÑÜ\d•\-►]/.test(line)) {
+        // Short line not ending with punct + next line is normal text → join
+        current += " " + line;
+      } else {
+        joined.push(current);
+        current = line;
+      }
+    }
   }
+  if (current) joined.push(current);
 
-  // Step 2: If text is still mostly a single blob (few newlines relative to length),
-  //         add breaks at sentence boundaries followed by uppercase words
-  const lineCount = clean.split("\n").filter(l => l.trim()).length;
-  const charCount = clean.length;
-  if (charCount > 500 && lineCount < charCount / 200) {
-    // Break at ". " followed by uppercase letter (likely new sentence/section)
-    clean = clean.replace(/\.\s+([A-ZÁÉÍÓÚÑÜ])/g, ".\n$1");
+  // Step 3: Split into paragraph blocks (empty lines = paragraph break)
+  const blocks = [];
+  let buf = [];
+  for (const line of joined) {
+    if (line === "") {
+      if (buf.length > 0) { blocks.push(buf.join(" ")); buf = []; }
+    } else {
+      buf.push(line);
+    }
   }
+  if (buf.length > 0) blocks.push(buf.join(" "));
 
-  // Step 3: Split into blocks
-  const blocks = clean
-    .split(/\n{2,}/)
-    .map(b => b.trim())
-    .filter(Boolean);
-
-  // If still only 1-2 blocks and very long, force split on single newlines
+  // Step 4: If still very few blocks and long text, split on sentence boundaries
   const finalBlocks = [];
   for (const block of blocks) {
-    if (block.length > 600 && block.includes("\n")) {
-      const subBlocks = block.split("\n").map(s => s.trim()).filter(Boolean);
-      finalBlocks.push(...subBlocks);
+    if (block.length > 800) {
+      // Split on ". " followed by uppercase
+      const parts = block.split(/\.\s+(?=[A-ZÁÉÍÓÚÑÜ])/).map((p, i, arr) => i < arr.length - 1 ? p + "." : p);
+      finalBlocks.push(...parts.filter(p => p.trim()));
     } else {
       finalBlocks.push(block);
     }
   }
 
-  // Detect if a block looks like a heading
+  // Detect headings (conservative)
   const isHeading = (t) => {
-    if (t.length > 150) return false;
+    if (t.length > 120 || t.length < 3) return false;
+    // Explicit academic heading keywords
     if (/^(SEMANA|UNIDAD|TEMA|MÓDULO|SECCIÓN|CAPÍTULO|PARTE|CLASE|BLOQUE)\s*\d/i.test(t)) return true;
-    if (/^(EJE TRANSVERSAL|INTRODUCCIÓN|CONCLUSIÓN|BIBLIOGRAFÍA|RESUMEN|OBJETIVOS|CONTENIDOS|EVALUACIÓN|ACTIVIDAD|FORO|ENTREGA|LECTURA|ENCUENTRO|CRITERIOS|PROGRAMA|FUNDAMENTACIÓN|PRIMER|SEGUNDO|TRABAJO|FACULTAD|CARRERA|ASIGNATURA)/i.test(t)) return true;
-    if (/^[A-ZÁÉÍÓÚÑÜ\s\d.:–\-]+$/.test(t) && t.length < 100) return true;
+    if (/^(INTRODUCCIÓN|CONCLUSIÓN|BIBLIOGRAFÍA|OBJETIVOS|CONTENIDOS|EVALUACIÓN|PROGRAMA|FUNDAMENTACIÓN|METODOLOGÍA|CRONOGRAMA)\b/i.test(t)) return true;
+    if (/^(FACULTAD|CARRERA|ASIGNATURA|TRABAJO PRÁCTICO|TP \d)/i.test(t)) return true;
+    // ALL CAPS and short (but must have at least 2 words to avoid false positives)
+    if (/^[A-ZÁÉÍÓÚÑÜ\s\d.:–\-]+$/.test(t) && t.length < 60 && t.split(/\s+/).length >= 2 && !/^\d+\.?\s*$/.test(t)) return true;
     return false;
   };
 
-  // Detect list items
   const isListItem = (t) => /^[\-•·▪►]\s/.test(t) || /^[a-z]\)\s/i.test(t);
   const isNumberedItem = (t) => /^\d+[\.\)]\s/.test(t) && t.length < 300;
 
@@ -99,14 +121,10 @@ function FormattedContent({ text }) {
         if (isHeading(para)) {
           return (
             <h3 key={i} style={{
-              fontSize: para.length < 50 ? 17 : 15,
-              fontWeight: 700,
-              color: P.red,
+              fontSize: 16, fontWeight: 700, color: P.red,
               fontFamily: "'Crimson Pro', serif",
-              margin: i === 0 ? "0 0 12px" : "28px 0 10px",
-              paddingBottom: 6,
-              borderBottom: `1px solid ${P.borderLight}`,
-              letterSpacing: "0.02em",
+              margin: i === 0 ? "0 0 10px" : "24px 0 8px",
+              paddingBottom: 4, borderBottom: `1px solid ${P.borderLight}`,
             }}>
               {para}
             </h3>
@@ -131,6 +149,16 @@ function FormattedContent({ text }) {
             </div>
           );
         }
+
+        return (
+          <p key={i} style={{ marginBottom: 12, textAlign: "justify" }}>
+            {para}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
 
         // Check for sub-lines
         const subLines = para.split("\n").map(l => l.trim()).filter(Boolean);
