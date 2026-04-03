@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
 import { getQuizzesByCourses, getUserAttempts } from "../services/moodle";
 import {
   HelpCircle, Clock, CheckCircle, XCircle, AlertTriangle,
   ExternalLink, Loader2, ChevronDown, ChevronRight, Award,
-  BarChart3, Target, RefreshCw,
+  BarChart3, Target, ArrowLeft, FileText,
 } from "lucide-react";
 
 function fmtDate(ts) {
@@ -40,51 +40,34 @@ function gradeBg(grade, max) {
 
 export default function Quizzes() {
   const { moodleToken, moodleUserId, courses } = useApp();
+  const [selectedCourse, setSelectedCourse] = useState(null);
   const [quizzes, setQuizzes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [attempts, setAttempts] = useState({}); // quizId -> attempts[]
+  const [loading, setLoading] = useState(false);
+  const [attempts, setAttempts] = useState({});
   const [loadingAttempts, setLoadingAttempts] = useState({});
-  const [expanded, setExpanded] = useState(null); // quizId
-  const [filter, setFilter] = useState("all"); // all, pending, completed, overdue
+  const [expanded, setExpanded] = useState(null);
 
-  useEffect(() => {
-    if (!moodleToken || moodleToken === "mock_token") { setLoading(false); return; }
-    let cancelled = false;
-
-    const load = async () => {
-      const courseIds = courses.map(c => c.id);
-      // Batch in groups of 5 to avoid too-long URLs
-      const allQuizzes = [];
-      for (let i = 0; i < courseIds.length; i += 5) {
-        const batch = courseIds.slice(i, i + 5);
-        const data = await getQuizzesByCourses(moodleToken, batch);
-        if (cancelled) return;
-        // API returns { quizzes: [...] } - each quiz has a .course field with course ID
-        for (const quiz of (data?.quizzes || [])) {
-          const course = courses.find(c => c.id === quiz.course);
-          allQuizzes.push({
-            ...quiz,
-            courseName: course?.fullname || "",
-            courseShortname: course?.shortname || "",
-            courseColor: course?.color || P.red,
-          });
-        }
-      }
-
-      // Sort: upcoming due dates first, then no due date
-      allQuizzes.sort((a, b) => {
+  const loadQuizzes = useCallback(async (course) => {
+    setSelectedCourse(course);
+    setQuizzes([]);
+    setAttempts({});
+    setExpanded(null);
+    setLoading(true);
+    try {
+      const data = await getQuizzesByCourses(moodleToken, [course.id]);
+      const items = (data?.quizzes || []).map(q => ({
+        ...q, courseName: course.fullname, courseShortname: course.shortname, courseColor: course.color,
+      }));
+      items.sort((a, b) => {
         if (a.timeclose && b.timeclose) return a.timeclose - b.timeclose;
         if (a.timeclose) return -1;
         if (b.timeclose) return 1;
         return a.name.localeCompare(b.name);
       });
-
-      setQuizzes(allQuizzes);
-      setLoading(false);
-    };
-    load();
-    return () => { cancelled = true; };
-  }, [moodleToken, courses]);
+      setQuizzes(items);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, [moodleToken]);
 
   const loadAttempts = async (quizId) => {
     if (attempts[quizId]) {
@@ -100,88 +83,76 @@ export default function Quizzes() {
 
   const now = Math.floor(Date.now() / 1000);
 
-  const filtered = quizzes.filter(q => {
-    if (filter === "pending") return !q.timeclose || q.timeclose > now;
-    if (filter === "overdue") return q.timeclose && q.timeclose < now;
-    if (filter === "completed") return attempts[q.id]?.length > 0;
-    return true;
-  });
-
-  // Stats
-  const totalQuizzes = quizzes.length;
-  const withDue = quizzes.filter(q => q.timeclose).length;
-  const overdue = quizzes.filter(q => q.timeclose && q.timeclose < now).length;
-
-  return (
-    <div className="fade-in" style={{ maxWidth: 900, margin: "0 auto" }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontFamily: ff.heading, fontSize: 28, color: P.text, fontWeight: 800, display: "flex", alignItems: "center", gap: 10 }}>
-          <HelpCircle size={26} color={P.red} /> Cuestionarios
-        </h1>
-        <p style={{ color: P.textMuted, fontSize: 14, marginTop: 2 }}>
-          {totalQuizzes} cuestionarios en {courses.length} materias
-          {overdue > 0 && <span style={{ color: "#DC2626", fontWeight: 600 }}> · {overdue} vencidos</span>}
-        </p>
-      </div>
-
-      {/* Stats */}
-      {!loading && totalQuizzes > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
-          {[
-            { label: "Total", value: totalQuizzes, icon: HelpCircle, color: "#2563eb" },
-            { label: "Con fecha límite", value: withDue, icon: Clock, color: "#D97706" },
-            { label: "Vencidos", value: overdue, icon: AlertTriangle, color: "#DC2626" },
-          ].map((s, i) => (
-            <div key={i} style={{ background: P.card, borderRadius: 12, border: `1px solid ${P.border}`, padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 9, background: `${s.color}10`, color: s.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <s.icon size={17} />
-              </div>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: P.text }}>{s.value}</div>
-                <div style={{ fontSize: 11, color: P.textMuted }}>{s.label}</div>
-              </div>
-            </div>
-          ))}
+  // ═══ Course selection view ═══
+  if (!selectedCourse) {
+    return (
+      <div className="fade-in" style={{ maxWidth: 900, margin: "0 auto" }}>
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontFamily: ff.heading, fontSize: 28, color: P.text, fontWeight: 800, display: "flex", alignItems: "center", gap: 10 }}>
+            <HelpCircle size={26} color={P.red} /> Cuestionarios
+          </h1>
+          <p style={{ color: P.textMuted, fontSize: 14, marginTop: 2 }}>Seleccioná una materia para ver sus cuestionarios</p>
         </div>
-      )}
 
-      {/* Filter tabs */}
-      {!loading && totalQuizzes > 0 && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-          {[
-            { id: "all", label: "Todos" },
-            { id: "pending", label: "Pendientes" },
-            { id: "overdue", label: "Vencidos" },
-          ].map(f => (
-            <button key={f.id} onClick={() => setFilter(f.id)}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+          {courses.map((course, i) => (
+            <button key={course.id} className="slide-in" onClick={() => loadQuizzes(course)}
               style={{
-                padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                background: filter === f.id ? P.red : P.card,
-                color: filter === f.id ? "#fff" : P.textMuted,
-                border: `1px solid ${filter === f.id ? P.red : P.border}`,
-                transition: "all 0.15s",
-              }}>
-              {f.label}
+                animationDelay: `${i * 0.05}s`, background: P.card, borderRadius: 14,
+                border: `1px solid ${P.border}`, overflow: "hidden", textAlign: "left",
+                cursor: "pointer", transition: "all 0.2s", width: "100%",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.05)"; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
+              <div style={{ height: 4, background: `linear-gradient(90deg, ${course.color}, ${course.color}88)` }} />
+              <div style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: `${course.color}12`, color: course.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <HelpCircle size={18} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: course.color, textTransform: "uppercase", letterSpacing: 0.8 }}>{course.shortname}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: P.text, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{course.fullname}</div>
+                </div>
+                <ChevronRight size={16} color={P.textMuted} />
+              </div>
             </button>
           ))}
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {/* Quiz list */}
+  // ═══ Quiz list for selected course ═══
+  return (
+    <div className="fade-in" style={{ maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ marginBottom: 24 }}>
+        <button onClick={() => setSelectedCourse(null)}
+          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: P.red, fontWeight: 600, marginBottom: 12, padding: "4px 0" }}>
+          <ArrowLeft size={16} /> Volver a materias
+        </button>
+        <h1 style={{ fontFamily: ff.heading, fontSize: 26, color: P.text, fontWeight: 800, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: `${selectedCourse.color}12`, color: selectedCourse.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <HelpCircle size={18} />
+          </div>
+          {selectedCourse.fullname}
+        </h1>
+        <p style={{ color: P.textMuted, fontSize: 14, marginTop: 4 }}>
+          {loading ? "Cargando..." : `${quizzes.length} cuestionario${quizzes.length !== 1 ? "s" : ""}`}
+        </p>
+      </div>
+
       {loading ? (
         <div style={{ padding: 60, textAlign: "center", color: P.textMuted, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <Loader2 size={20} className="spin" color={P.red} /> Cargando cuestionarios...
         </div>
-      ) : filtered.length === 0 ? (
+      ) : quizzes.length === 0 ? (
         <div style={{ padding: 60, textAlign: "center", color: P.textMuted }}>
           <HelpCircle size={36} strokeWidth={1.2} style={{ marginBottom: 10 }} />
-          <div style={{ fontSize: 15, fontWeight: 600, color: P.textSec }}>
-            {filter !== "all" ? "No hay cuestionarios en esta categoría" : "No hay cuestionarios disponibles"}
-          </div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: P.textSec }}>No hay cuestionarios en esta materia</div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {filtered.map((quiz, i) => {
+          {quizzes.map((quiz, i) => {
             const isExpanded = expanded === quiz.id;
             const quizAttempts = attempts[quiz.id] || [];
             const isOverdue = quiz.timeclose && quiz.timeclose < now;
@@ -190,15 +161,15 @@ export default function Quizzes() {
             const bestGrade = quizAttempts.length > 0 ? Math.max(...quizAttempts.map(a => a.sumgrades || 0)) : null;
 
             return (
-              <div key={quiz.id} className="slide-in" style={{ animationDelay: `${i * 0.04}s`, background: P.card, borderRadius: 14, border: `1px solid ${P.border}`, overflow: "hidden" }}>
+              <div key={quiz.id} className="slide-in" style={{ animationDelay: `${i * 0.05}s`, background: P.card, borderRadius: 14, border: `1px solid ${P.border}`, overflow: "hidden" }}>
                 {/* Quiz header */}
                 <button onClick={() => loadAttempts(quiz.id)}
                   style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", textAlign: "left", transition: "all 0.15s" }}
                   onMouseEnter={e => e.currentTarget.style.background = P.cream} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   <div style={{
                     width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-                    background: isOverdue ? "#FEF2F2" : isOpen ? "#ECFDF5" : `${quiz.courseColor}10`,
-                    color: isOverdue ? "#DC2626" : isOpen ? "#059669" : quiz.courseColor,
+                    background: isOverdue ? "#FEF2F2" : isOpen ? "#ECFDF5" : `${selectedCourse.color}10`,
+                    color: isOverdue ? "#DC2626" : isOpen ? "#059669" : selectedCourse.color,
                     display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
                     {isOverdue ? <XCircle size={20} /> : isOpen ? <Target size={20} /> : <HelpCircle size={20} />}
@@ -206,7 +177,6 @@ export default function Quizzes() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: P.text }}>{quiz.name}</div>
                     <div style={{ fontSize: 12, color: P.textMuted, marginTop: 2, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                      <span style={{ fontWeight: 600, color: quiz.courseColor }}>{quiz.courseShortname}</span>
                       {quiz.timeclose && <span><Clock size={10} style={{ verticalAlign: "-1px" }} /> {fmtDate(quiz.timeclose)}</span>}
                       {quiz.timelimit > 0 && <span>{Math.floor(quiz.timelimit / 60)} min</span>}
                       {quiz.attempts > 0 && <span>Máx. {quiz.attempts} intentos</span>}
@@ -216,20 +186,18 @@ export default function Quizzes() {
                     {tl && (
                       <span style={{
                         fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 6,
-                        background: isOverdue ? "#FEF2F2" : tl === "Mañana" || parseInt(tl) <= 3 ? "#FEF3C7" : "#ECFDF5",
-                        color: isOverdue ? "#DC2626" : tl === "Mañana" || parseInt(tl) <= 3 ? "#D97706" : "#059669",
+                        background: isOverdue ? "#FEF2F2" : "#FEF3C7",
+                        color: isOverdue ? "#DC2626" : "#D97706",
                       }}>
                         {tl}
                       </span>
                     )}
-                    {isOpen && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 5, background: "#ECFDF5", color: "#059669" }}>ABIERTO</span>
-                    )}
+                    {isOpen && <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 5, background: "#ECFDF5", color: "#059669" }}>ABIERTO</span>}
                     {isExpanded ? <ChevronDown size={16} color={P.textMuted} /> : <ChevronRight size={16} color={P.textMuted} />}
                   </div>
                 </button>
 
-                {/* Expanded: attempts + actions */}
+                {/* Expanded: attempts */}
                 {isExpanded && (
                   <div style={{ borderTop: `1px solid ${P.borderLight}`, padding: "14px 18px" }}>
                     {loadingAttempts[quiz.id] ? (
@@ -238,26 +206,17 @@ export default function Quizzes() {
                       </div>
                     ) : (
                       <>
-                        {/* Quiz info */}
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
-                          {quiz.grade > 0 && (
-                            <div style={{ fontSize: 12, color: P.textSec, display: "flex", alignItems: "center", gap: 4 }}>
-                              <Award size={13} /> Nota máxima: {quiz.grade}
-                            </div>
-                          )}
-                          {quiz.timeopen > 0 && (
-                            <div style={{ fontSize: 12, color: P.textSec }}>
-                              Abre: {fmtDate(quiz.timeopen)}
-                            </div>
-                          )}
-                          {quiz.intro && (
-                            <div style={{ width: "100%", fontSize: 13, color: P.textSec, lineHeight: 1.5 }}>
-                              {quiz.intro.replace(/<[^>]+>/g, "").substring(0, 200)}
-                            </div>
-                          )}
+                        {quiz.intro && (
+                          <div style={{ fontSize: 13, color: P.textSec, lineHeight: 1.5, marginBottom: 12, padding: "8px 12px", background: P.borderLight, borderRadius: 8 }}>
+                            {quiz.intro.replace(/<[^>]+>/g, "").substring(0, 200)}
+                          </div>
+                        )}
+
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+                          {quiz.grade > 0 && <div style={{ fontSize: 12, color: P.textSec, display: "flex", alignItems: "center", gap: 4 }}><Award size={13} /> Nota máxima: {quiz.grade}</div>}
+                          {quiz.timeopen > 0 && <div style={{ fontSize: 12, color: P.textSec }}>Abre: {fmtDate(quiz.timeopen)}</div>}
                         </div>
 
-                        {/* Attempts */}
                         {quizAttempts.length === 0 ? (
                           <div style={{ padding: "12px 16px", background: P.borderLight, borderRadius: 8, fontSize: 13, color: P.textMuted, textAlign: "center" }}>
                             No realizaste intentos en este cuestionario
@@ -295,9 +254,7 @@ export default function Quizzes() {
                                   </div>
                                   {grade != null && (
                                     <div style={{ textAlign: "right", flexShrink: 0 }}>
-                                      <div style={{ fontSize: 16, fontWeight: 800, color: gradeColor(grade, maxGrade) }}>
-                                        {grade}/{maxGrade}
-                                      </div>
+                                      <div style={{ fontSize: 16, fontWeight: 800, color: gradeColor(grade, maxGrade) }}>{grade}/{maxGrade}</div>
                                       {pct != null && <div style={{ fontSize: 10, color: P.textMuted }}>{pct}%</div>}
                                     </div>
                                   )}
@@ -307,33 +264,22 @@ export default function Quizzes() {
                             {bestGrade != null && (
                               <div style={{ marginTop: 8, padding: "8px 14px", background: "#ECFDF5", borderRadius: 8, display: "flex", alignItems: "center", gap: 8 }}>
                                 <Award size={16} color="#059669" />
-                                <span style={{ fontSize: 13, fontWeight: 700, color: "#059669" }}>
-                                  Mejor nota: {parseFloat(bestGrade).toFixed(1)}/{quiz.sumgrades || quiz.grade || 10}
-                                </span>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: "#059669" }}>Mejor nota: {parseFloat(bestGrade).toFixed(1)}/{quiz.sumgrades || quiz.grade || 10}</span>
                               </div>
                             )}
                           </div>
                         )}
 
-                        {/* Actions */}
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <a href={`https://campus.ucalp.edu.ar/mod/quiz/view.php?id=${quiz.coursemodule}`} target="_blank" rel="noopener noreferrer"
                             style={{
                               display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px",
                               borderRadius: 8, fontSize: 12, fontWeight: 600, textDecoration: "none",
-                              background: isOpen ? P.red : P.borderLight,
-                              color: isOpen ? "#fff" : P.textSec,
-                              transition: "all 0.2s",
+                              background: isOpen ? P.red : P.borderLight, color: isOpen ? "#fff" : P.textSec,
                             }}>
                             {isOpen ? <Target size={14} /> : <ExternalLink size={14} />}
                             {isOpen ? "Realizar cuestionario" : "Ver en Moodle"}
                           </a>
-                          {quizAttempts.length > 0 && (
-                            <a href={`https://campus.ucalp.edu.ar/mod/quiz/view.php?id=${quiz.coursemodule}`} target="_blank" rel="noopener noreferrer"
-                              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600, textDecoration: "none", background: P.borderLight, color: P.textSec }}>
-                              <BarChart3 size={14} /> Revisar respuestas
-                            </a>
-                          )}
                         </div>
                       </>
                     )}
