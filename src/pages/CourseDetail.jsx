@@ -1066,7 +1066,11 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
             {materials?.some(m => m.files?.length > 0) && (
               <button onClick={async () => {
                 for (const mat of materials) {
-                  if (mat.files?.length > 0 && !extractedTexts[mat.id]) await extractText(mat);
+                  if (!mat.files?.length || extractedTexts[mat.id]) continue;
+                  const fn = (mat.files[0]?.filename || "").toLowerCase();
+                  const mt = mat.files[0]?.mimetype || "";
+                  if (mt.includes("pdf") || fn.endsWith(".pdf") || fn.endsWith(".docx") || fn.endsWith(".doc")) continue;
+                  await extractText(mat);
                 }
               }}
               style={{ fontSize: 12, color: P.red, fontWeight: 600, background: P.redSoft, padding: "4px 10px", borderRadius: 6, border: "none", cursor: "pointer" }}>
@@ -1096,8 +1100,11 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
                     borderLeft: isSelected ? `3px solid ${course.color}` : "3px solid transparent",
                   }}
                   onClick={() => {
+                    const isPdf = (mat.files?.[0]?.mimetype || "").includes("pdf") || (mat.files?.[0]?.filename || "").toLowerCase().endsWith(".pdf");
                     if (mat.type === "forum" || mat.type === "url" || mat.type === "assign" || mat.type === "quiz") {
                       if (mat.url) window.open(mat.url, "_blank");
+                    } else if (isPdf && mat.files?.length > 0) {
+                      openPdfViewer(mat);
                     } else if (extracted?.text) {
                       setSelectedMat(mat);
                     }
@@ -1121,36 +1128,56 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
                   </div>
                   {/* Action buttons */}
                   <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
-                    {hasFile && !extracted?.text && (
-                      <button onClick={(e) => { e.stopPropagation(); extractText(mat); }}
-                        disabled={extracted?.loading}
-                        title="Leer archivo con IA"
-                        style={{ width: 28, height: 28, borderRadius: 6, background: "#EFF6FF", color: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", opacity: extracted?.loading ? 0.5 : 1 }}>
-                        <Eye size={13} />
-                      </button>
-                    )}
-                    {hasFile && ((mat.files?.[0]?.mimetype || "").includes("pdf") || (mat.files?.[0]?.filename || "").toLowerCase().endsWith(".pdf")) && (
-                      <button onClick={(e) => { e.stopPropagation(); openPdfViewer(mat); }}
-                        title="Ver PDF completo"
-                        style={{ width: 28, height: 28, borderRadius: 6, background: "#FEF3C7", color: "#D97706", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}>
-                        <FileSearch size={13} />
-                      </button>
-                    )}
-                    {extracted?.text && (
-                      <button onClick={(e) => { e.stopPropagation(); setSelectedMat(mat); }}
-                        title="Ver contenido"
-                        style={{ width: 28, height: 28, borderRadius: 6, background: "#DCFCE7", color: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}>
-                        <Check size={13} />
-                      </button>
-                    )}
-                    {googleAccessToken && hasFile && (
-                      <button onClick={(e) => { e.stopPropagation(); setFolderPickerMat(mat); }}
-                        disabled={savedFiles[mat.id]?.saving}
-                        title={savedFiles[mat.id]?.saved ? "Guardado en Drive" : "Guardar en Drive"}
-                        style={{ width: 28, height: 28, borderRadius: 6, background: savedFiles[mat.id]?.saved ? "#DCFCE7" : "#F3E8FF", color: savedFiles[mat.id]?.saved ? "#16A34A" : "#7C3AED", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", opacity: savedFiles[mat.id]?.saving ? 0.5 : 1 }}>
-                        <HardDrive size={13} />
-                      </button>
-                    )}
+                    {(() => {
+                      const isPdf = (mat.files?.[0]?.mimetype || "").includes("pdf") || (mat.files?.[0]?.filename || "").toLowerCase().endsWith(".pdf");
+                      const isDocx = (mat.files?.[0]?.filename || "").toLowerCase().endsWith(".docx") || (mat.files?.[0]?.filename || "").toLowerCase().endsWith(".doc");
+                      return (
+                        <>
+                          {/* Extract button — only for non-PDF, non-DOCX files */}
+                          {hasFile && !extracted?.text && !isPdf && !isDocx && (
+                            <button onClick={(e) => { e.stopPropagation(); extractText(mat); }}
+                              disabled={extracted?.loading}
+                              title="Leer archivo con IA"
+                              style={{ width: 28, height: 28, borderRadius: 6, background: "#EFF6FF", color: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", opacity: extracted?.loading ? 0.5 : 1 }}>
+                              <Eye size={13} />
+                            </button>
+                          )}
+                          {/* PDF viewer button */}
+                          {hasFile && isPdf && (
+                            <button onClick={(e) => { e.stopPropagation(); openPdfViewer(mat); }}
+                              title="Ver PDF con IA"
+                              style={{ width: 28, height: 28, borderRadius: 6, background: "#FEF3C7", color: "#D97706", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}>
+                              <FileSearch size={13} />
+                            </button>
+                          )}
+                          {/* DOCX — open in Google Docs */}
+                          {hasFile && isDocx && googleAccessToken && (
+                            <button onClick={(e) => { e.stopPropagation(); setFolderPickerMat(mat); }}
+                              title="Guardar en Drive para ver en Google Docs"
+                              style={{ width: 28, height: 28, borderRadius: 6, background: "#EFF6FF", color: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}>
+                              <Eye size={13} />
+                            </button>
+                          )}
+                          {/* Extracted text indicator */}
+                          {extracted?.text && (
+                            <button onClick={(e) => { e.stopPropagation(); setSelectedMat(mat); }}
+                              title="Ver contenido"
+                              style={{ width: 28, height: 28, borderRadius: 6, background: "#DCFCE7", color: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}>
+                              <Check size={13} />
+                            </button>
+                          )}
+                          {/* Save to Drive */}
+                          {googleAccessToken && hasFile && !isDocx && (
+                            <button onClick={(e) => { e.stopPropagation(); setFolderPickerMat(mat); }}
+                              disabled={savedFiles[mat.id]?.saving}
+                              title={savedFiles[mat.id]?.saved ? "Guardado en Drive" : "Guardar en Drive"}
+                              style={{ width: 28, height: 28, borderRadius: 6, background: savedFiles[mat.id]?.saved ? "#DCFCE7" : "#F3E8FF", color: savedFiles[mat.id]?.saved ? "#16A34A" : "#7C3AED", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", opacity: savedFiles[mat.id]?.saving ? 0.5 : 1 }}>
+                              <HardDrive size={13} />
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               );
