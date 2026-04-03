@@ -117,8 +117,10 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 10,
                 padding: "8px 14px", borderRadius: 8, transition: "all 0.15s",
+                background: "transparent", border: "none",
                 color: studyActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
                 fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1,
+                cursor: "pointer",
               }}
               onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
               onMouseLeave={e => e.currentTarget.style.color = studyActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}>
