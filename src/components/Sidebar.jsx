@@ -3,32 +3,66 @@ import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
 import {
   Home, Sparkles, Calendar, HelpCircle, Settings,
-  GraduationCap, BookOpen, ChevronLeft, Menu, Library,
-  Calculator, Camera, MessageCircle, Radio, Users,
-  Sun, Moon, Layers,
+  GraduationCap, BookOpen, ChevronLeft, ChevronDown, ChevronRight as ChevronR,
+  Menu, Library, Calculator, Camera, MessageCircle, Radio, Users,
+  Sun, Moon, Layers, FlaskConical,
 } from "lucide-react";
 
-const navItems = [
+const mainNav = [
   { id: "dashboard", label: "Inicio", Icon: Home },
   { id: "courses", label: "Mis Materias", Icon: GraduationCap },
+  { id: "career", label: "Mi Carrera", Icon: BookOpen },
+  { id: "chat", label: "Tutor IA", Icon: Sparkles },
+  { id: "planner", label: "Planificador", Icon: Calendar },
+  { id: "library", label: "Biblioteca", Icon: Library },
+];
+
+const studyNav = [
+  { id: "wolfram", label: "Calculadora", Icon: Calculator },
+  { id: "scan", label: "Digitalizar", Icon: Camera },
+  { id: "quizzes", label: "Cuestionarios", Icon: HelpCircle },
+  { id: "flashcards", label: "Flashcards", Icon: Layers },
+  { id: "quiz", label: "Práctica", Icon: FlaskConical },
+];
+
+const bottomNav = [
   { id: "messages", label: "Mensajes", Icon: MessageCircle },
   { id: "livechat", label: "Chat en vivo", Icon: Radio },
   { id: "classmates", label: "Compañeros", Icon: Users },
-  { id: "career", label: "Mi Carrera", Icon: BookOpen },
-  { id: "library", label: "Biblioteca", Icon: Library },
-  { id: "wolfram", label: "Calculadora", Icon: Calculator },
-  { id: "scan", label: "Digitalizar", Icon: Camera },
-  { id: "chat", label: "Tutor IA", Icon: Sparkles },
-  { id: "planner", label: "Planificador", Icon: Calendar },
-  { id: "quizzes", label: "Cuestionarios", Icon: HelpCircle },
-  { id: "flashcards", label: "Flashcards", Icon: Layers },
-  { id: "quiz", label: "Práctica", Icon: HelpCircle },
   { id: "settings", label: "Ajustes", Icon: Settings },
 ];
 
+function NavButton({ item, active, open, onNavigate }) {
+  return (
+    <button onClick={() => onNavigate(item.id)}
+      style={{
+        display: "flex", alignItems: "center", gap: 12,
+        padding: open ? "9px 14px" : "9px 0", borderRadius: 10,
+        background: active ? P.sidebarActive : "transparent",
+        color: active ? "#fff" : "rgba(255,255,255,0.5)",
+        fontSize: 13, fontWeight: active ? 600 : 400,
+        transition: "all 0.2s", width: "100%",
+        justifyContent: open ? "flex-start" : "center",
+        borderLeft: active ? `3px solid ${P.redAccent}` : "3px solid transparent",
+      }}
+      onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = P.sidebarHover; e.currentTarget.style.color = "rgba(255,255,255,0.8)"; } }}
+      onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = active ? "#fff" : "rgba(255,255,255,0.5)"; } }}>
+      <item.Icon size={18} />
+      {open && <span style={{ whiteSpace: "nowrap" }}>{item.label}</span>}
+    </button>
+  );
+}
+
 export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark, mobileOpen }) {
   const [open, setOpen] = useState(true);
+  const [studyOpen, setStudyOpen] = useState(() => {
+    // Auto-open if current screen is a study item
+    return studyNav.some(i => i.id === currentScreen);
+  });
   const { user } = useApp();
+
+  // Keep study section open if a study item is active
+  const studyActive = studyNav.some(i => i.id === currentScreen);
 
   return (
     <aside
@@ -36,21 +70,12 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
       style={{
         width: open ? 240 : 64,
         background: P.sidebar,
-        display: "flex",
-        flexDirection: "column",
+        display: "flex", flexDirection: "column",
         transition: "width 0.3s ease, transform 0.3s ease",
-        overflow: "hidden",
-        flexShrink: 0,
-      }}
-    >
+        overflow: "hidden", flexShrink: 0,
+      }}>
       {/* Header */}
-      <div
-        style={{
-          padding: open ? "18px 16px" : "18px 0",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
-          display: "flex", flexDirection: "column", alignItems: "center",
-        }}
-      >
+      <div style={{ padding: open ? "18px 16px" : "18px 0", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", alignItems: "center" }}>
         {open ? (
           <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 10 }}>
             <div style={{ width: 38, height: 38, borderRadius: 10, background: P.red, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#fff" }}>
@@ -77,34 +102,56 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
         )}
       </div>
 
-      {/* Nav */}
-      <nav style={{ flex: 1, padding: "12px 10px", display: "flex", flexDirection: "column", gap: 2, overflow: "auto" }}>
-        {navItems.map((item) => {
-          const active = currentScreen === item.id;
-          return (
-            <button key={item.id} onClick={() => onNavigate(item.id)}
+      {/* Navigation */}
+      <nav style={{ flex: 1, padding: "10px 10px", display: "flex", flexDirection: "column", gap: 1, overflow: "auto" }}>
+        {/* Main nav */}
+        {mainNav.map(item => (
+          <NavButton key={item.id} item={item} active={currentScreen === item.id} open={open} onNavigate={onNavigate} />
+        ))}
+
+        {/* ── Mi Estudio section ── */}
+        <div style={{ marginTop: 8 }}>
+          {open ? (
+            <button onClick={() => setStudyOpen(!studyOpen && !studyActive)}
               style={{
-                display: "flex", alignItems: "center", gap: 12,
-                padding: open ? "10px 14px" : "10px 0", borderRadius: 10,
-                background: active ? P.sidebarActive : "transparent",
-                color: active ? "#fff" : "rgba(255,255,255,0.5)",
-                fontSize: 13, fontWeight: active ? 600 : 400,
-                transition: "all 0.2s", width: "100%",
-                justifyContent: open ? "flex-start" : "center",
-                borderLeft: active ? `3px solid ${P.redAccent}` : "3px solid transparent",
+                width: "100%", display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 14px", borderRadius: 8, transition: "all 0.15s",
+                color: studyActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
+                fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1,
               }}
-              onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = P.sidebarHover; e.currentTarget.style.color = "rgba(255,255,255,0.8)"; } }}
-              onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = active ? "#fff" : "rgba(255,255,255,0.5)"; } }}>
-              <item.Icon size={18} />
-              {open && <span style={{ whiteSpace: "nowrap" }}>{item.label}</span>}
+              onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
+              onMouseLeave={e => e.currentTarget.style.color = studyActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}>
+              {(studyOpen || studyActive) ? <ChevronDown size={13} /> : <ChevronR size={13} />}
+              Mi Estudio
             </button>
-          );
-        })}
+          ) : (
+            <div style={{ width: "100%", height: 1, background: "rgba(255,255,255,0.08)", margin: "6px 0" }} />
+          )}
+
+          {(studyOpen || studyActive || !open) && (
+            <div style={{ paddingLeft: open ? 6 : 0 }}>
+              {studyNav.map(item => (
+                <NavButton key={item.id} item={item} active={currentScreen === item.id} open={open} onNavigate={onNavigate} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Separator ── */}
+        {open ? (
+          <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "8px 14px" }} />
+        ) : (
+          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "6px 0" }} />
+        )}
+
+        {/* Bottom nav */}
+        {bottomNav.map(item => (
+          <NavButton key={item.id} item={item} active={currentScreen === item.id} open={open} onNavigate={onNavigate} />
+        ))}
       </nav>
 
       {/* Dark mode toggle + User */}
       <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-        {/* Dark mode toggle */}
         <button onClick={onToggleDark}
           style={{
             width: "100%", display: "flex", alignItems: "center", gap: 10,
@@ -118,7 +165,6 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
           {open && <span style={{ fontWeight: 500 }}>{dark ? "Modo claro" : "Modo oscuro"}</span>}
         </button>
 
-        {/* User */}
         <div style={{ padding: open ? "12px 20px" : "12px 0", display: "flex", alignItems: "center", justifyContent: open ? "flex-start" : "center", gap: 10 }}>
           {user?.picture ? (
             <img src={user.picture} alt="" style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, objectFit: "cover" }} referrerPolicy="no-referrer" />
