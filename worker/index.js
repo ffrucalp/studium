@@ -468,8 +468,13 @@ async function moodleExtract(body, env) {
   const { token, fileurl } = body;
   if (!token || !fileurl) return json({ error: "Faltan token o fileurl" }, 400, env);
 
-  const sep = fileurl.includes("?") ? "&" : "?";
-  const res = await fetch(`${fileurl}${sep}token=${token}`);
+  // Convert pluginfile.php to webservice/pluginfile.php for token auth
+  let url = fileurl;
+  if (url.includes("/pluginfile.php/") && !url.includes("/webservice/pluginfile.php/")) {
+    url = url.replace("/pluginfile.php/", "/webservice/pluginfile.php/");
+  }
+  const sep = url.includes("?") ? "&" : "?";
+  const res = await fetch(`${url}${sep}token=${token}`);
   if (!res.ok) return json({ error: "No se pudo descargar" }, res.status, env);
 
   const contentType = res.headers.get("content-type") || "";
