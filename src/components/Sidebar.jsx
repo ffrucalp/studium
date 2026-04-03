@@ -5,7 +5,7 @@ import {
   Home, Sparkles, Calendar, HelpCircle, Settings,
   GraduationCap, BookOpen, ChevronLeft, Menu, Library,
   Calculator, Camera, MessageCircle, Radio, Users,
-  Sun, Moon,
+  Sun, Moon, Layers,
 } from "lucide-react";
 
 const navItems = [
@@ -21,6 +21,7 @@ const navItems = [
   { id: "chat", label: "Tutor IA", Icon: Sparkles },
   { id: "planner", label: "Planificador", Icon: Calendar },
   { id: "quizzes", label: "Cuestionarios", Icon: HelpCircle },
+  { id: "flashcards", label: "Flashcards", Icon: Layers },
   { id: "quiz", label: "Práctica", Icon: HelpCircle },
   { id: "settings", label: "Ajustes", Icon: Settings },
 ];
