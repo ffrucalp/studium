@@ -308,8 +308,11 @@ function ProfessionalMap({ data, svgRef }) {
   const titleH = 90;
   const centralH = 60;
   const connectorH = 40;
-  const notesH = data.notes?.length ? 20 + data.notes.length * 18 + 20 : 0;
-  const svgH = titleH + centralH + connectorH + maxColH + 30 + notesH;
+  // Pre-calculate notes wrapping
+  const wrappedNotes = (data.notes || []).map(n => wrapText(n, 80));
+  const totalNoteLines = wrappedNotes.reduce((s, lines) => s + lines.length, 0);
+  const notesH = totalNoteLines > 0 ? 36 + totalNoteLines * 16 + 16 : 0;
+  const svgH = titleH + centralH + connectorH + maxColH + 40 + notesH;
   const colStartY = titleH + centralH + connectorH;
 
   // Column X positions
@@ -422,20 +425,26 @@ function ProfessionalMap({ data, svgRef }) {
       })}
 
       {/* Notes */}
-      {data.notes?.length > 0 && (
+      {wrappedNotes.length > 0 && totalNoteLines > 0 && (
         <g>
           <rect x={marginX} y={svgH - notesH - 10} width={svgW - marginX * 2} height={notesH} rx={10} fill="#eff6ff" stroke="#bfdbfe" strokeWidth="1" />
           <text x={marginX + 20} y={svgH - notesH + 14} fontFamily="Arial, sans-serif" fontSize="12" fontWeight="bold" fill="#1e40af">
             Notas del mapa:
           </text>
-          {data.notes.map((note, ni) => {
-            const noteLines = wrapText(note, 90);
-            return noteLines.map((line, li) => (
-              <text key={`${ni}-${li}`} x={marginX + 20} y={svgH - notesH + 32 + ni * 18 + li * 14} fontFamily="Arial, sans-serif" fontSize="11" fill="#3b82f6">
-                {li === 0 ? `• ${line}` : `  ${line}`}
-              </text>
-            ));
-          })}
+          {(() => {
+            let lineIdx = 0;
+            return wrappedNotes.map((lines, ni) =>
+              lines.map((line, li) => {
+                const y = svgH - notesH + 34 + lineIdx * 16;
+                lineIdx++;
+                return (
+                  <text key={`${ni}-${li}`} x={marginX + 20} y={y} fontFamily="Arial, sans-serif" fontSize="11" fill="#3b82f6">
+                    {li === 0 ? `• ${line}` : `  ${line}`}
+                  </text>
+                );
+              })
+            );
+          })()}
         </g>
       )}
     </svg>
