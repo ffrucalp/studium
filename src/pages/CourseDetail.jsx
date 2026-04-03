@@ -312,8 +312,7 @@ function FolderPicker({ accessToken, fileName, onSelect, onClose }) {
 }
 
 /**
- * PDF Viewer Modal - uses Adobe PDF Embed API with annotation tools,
- * falls back to native browser viewer if Adobe key not configured.
+ * PDF Viewer Modal - uses Adobe PDF Embed API with AI sidebar
  */
 function PDFViewerModal({ mat, moodleToken, onClose }) {
   const containerRef = useRef(null);
@@ -321,6 +320,13 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
   const [error, setError] = useState(null);
   const [blobUrl, setBlobUrl] = useState(null);
   const viewerInitialized = useRef(false);
+  // AI panel
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiResult, setAiResult] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiAction, setAiAction] = useState("");
+  const [extractedText, setExtractedText] = useState(null);
+  const [extracting, setExtracting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,14 +338,11 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
         const data = await downloadFile(moodleToken, file.fileurl);
         if (cancelled) return;
 
-        // Convert base64 to Uint8Array
         const binary = atob(data.content);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
         const blob = new Blob([bytes], { type: "application/pdf" });
 
-        // Try Adobe PDF Embed API first
         if (CONFIG.ADOBE_CLIENT_ID && window.AdobeDC && !viewerInitialized.current) {
           viewerInitialized.current = true;
           const adobeDCView = new window.AdobeDC.View({
@@ -352,16 +355,11 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
             metaData: { fileName: file.filename || mat.name, id: String(mat.id) },
           }, {
             embedMode: "FULL_WINDOW",
-            showAnnotationTools: true,
-            showDownloadPDF: true,
-            showPrintPDF: true,
-            enableAnnotationAPIs: true,
-            includePDFAnnotations: true,
-            defaultViewMode: "FIT_PAGE",
+            showAnnotationTools: true, showDownloadPDF: true, showPrintPDF: true,
+            enableAnnotationAPIs: true, includePDFAnnotations: true, defaultViewMode: "FIT_PAGE",
           });
           setLoading(false);
         } else {
-          // Fallback: native browser PDF viewer
           const url = URL.createObjectURL(blob);
           setBlobUrl(url);
           setLoading(false);
@@ -377,60 +375,153 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
     };
   }, [mat, moodleToken]);
 
+  // Extract text for AI
+  const doExtract = async () => {
+    if (extractedText) return extractedText;
+    setExtracting(true);
+    try {
+      const result = await extractFileText(moodleToken, mat.files[0].fileurl);
+      setExtractedText(result.text);
+      setExtracting(false);
+      return result.text;
+    } catch {
+      setExtracting(false);
+      return null;
+    }
+  };
+
+  // AI action handler
+  const handleAI = async (action) => {
+    setAiOpen(true);
+    setAiAction(action);
+    setAiResult(null);
+    setAiLoading(true);
+
+    let text = extractedText;
+    if (!text) text = await doExtract();
+
+    if (!text) {
+      setAiResult("No se pudo extraer el texto de este archivo. Probá con la función **Digitalizar apuntes** para archivos pesados.");
+      setAiLoading(false);
+      return;
+    }
+
+    // Clean fragmented text first
+    const cleanPrompt = `El siguiente texto fue extraído de un PDF y puede tener caracteres sueltos o palabras cortadas. Reconstruí el texto original uniendo los fragmentos de manera coherente. Devolvé SOLO el texto reconstruido sin explicaciones:\n\n${text.substring(0, 6000)}`;
+    let cleanText;
+    try {
+      cleanText = await callAI(cleanPrompt);
+    } catch {
+      cleanText = text;
+    }
+
+    const prompts = {
+      resumir: `Resumí el siguiente texto académico de forma clara y estructurada en español. Usá títulos y puntos clave:\n\n${cleanText.substring(0, 8000)}`,
+      conceptos: `Extraé los conceptos clave del siguiente texto académico. Para cada concepto, da una definición breve. Respondé en español:\n\n${cleanText.substring(0, 8000)}`,
+      preguntas: `Generá 10 preguntas de repaso (con sus respuestas) basadas en el siguiente texto académico. Respondé en español:\n\n${cleanText.substring(0, 8000)}`,
+      explicar: `Explicá el contenido del siguiente texto académico de forma simple y didáctica, como si le explicaras a un estudiante. Usá ejemplos. Respondé en español:\n\n${cleanText.substring(0, 8000)}`,
+    };
+
+    try {
+      const result = await callAI(prompts[action] || prompts.resumir);
+      setAiResult(result);
+    } catch (e) {
+      setAiResult("Error al procesar: " + e.message);
+    }
+    setAiLoading(false);
+  };
+
+  const aiActions = [
+    { id: "resumir", label: "Resumir", icon: "📋" },
+    { id: "conceptos", label: "Conceptos clave", icon: "💡" },
+    { id: "preguntas", label: "Preguntas", icon: "❓" },
+    { id: "explicar", label: "Explicar", icon: "📖" },
+  ];
+
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
-      display: "flex", flexDirection: "column",
-    }}>
-      {/* Header bar */}
-      <div style={{
-        padding: "10px 20px", background: "#1A1A1A",
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-        flexShrink: 0,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <FileSearch size={18} style={{ color: "#D97706" }} />
-          <span style={{ color: "#fff", fontSize: 14, fontWeight: 600, maxWidth: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", flexDirection: "column" }}>
+      {/* Header */}
+      <div style={{ padding: "8px 16px", background: "#1A1A1A", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+          <FileSearch size={16} style={{ color: "#D97706", flexShrink: 0 }} />
+          <span style={{ color: "#fff", fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {mat.name}
           </span>
-          {!CONFIG.ADOBE_CLIENT_ID && (
-            <span style={{ color: "#9CA3AF", fontSize: 11, background: "rgba(255,255,255,0.1)", padding: "2px 8px", borderRadius: 4 }}>
-              Vista básica · Configurá VITE_ADOBE_CLIENT_ID para anotaciones
-            </span>
-          )}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          {aiActions.map(a => (
+            <button key={a.id} onClick={() => handleAI(a.id)}
+              style={{
+                padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                background: aiAction === a.id && aiOpen ? P.red : "rgba(255,255,255,0.1)",
+                color: aiAction === a.id && aiOpen ? "#fff" : "rgba(255,255,255,0.7)",
+                border: "none", cursor: "pointer", transition: "all 0.15s",
+                display: "flex", alignItems: "center", gap: 4,
+              }}
+              onMouseEnter={e => { if (aiAction !== a.id) e.currentTarget.style.background = "rgba(255,255,255,0.2)"; }}
+              onMouseLeave={e => { if (aiAction !== a.id) e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }}>
+              {a.icon} {a.label}
+            </button>
+          ))}
         </div>
         <button onClick={onClose}
-          style={{ padding: "6px 16px", borderRadius: 8, background: P.red, color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer" }}>
-          Cerrar
+          style={{ padding: "5px 14px", borderRadius: 6, background: P.red, color: "#fff", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", marginLeft: 8 }}>
+          ✕
         </button>
       </div>
 
-      {/* PDF content */}
-      <div ref={containerRef} style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        {loading && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", gap: 10 }}>
-            <div style={{ width: 18, height: 18, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-            Cargando PDF...
-          </div>
-        )}
-        {error && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: P.redMuted, flexDirection: "column", gap: 10 }}>
-            <span style={{ fontSize: 16, fontWeight: 600 }}>Error al cargar el PDF</span>
-            <span style={{ fontSize: 13 }}>{error}</span>
-          </div>
-        )}
+      {/* Content: PDF + AI panel */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* PDF Viewer */}
+        <div ref={containerRef} style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+          {loading && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", gap: 10 }}>
+              <div style={{ width: 18, height: 18, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              Cargando PDF...
+            </div>
+          )}
+          {error && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: P.redMuted, flexDirection: "column", gap: 10 }}>
+              <span style={{ fontSize: 16, fontWeight: 600 }}>Error al cargar el PDF</span>
+              <span style={{ fontSize: 13 }}>{error}</span>
+            </div>
+          )}
+          <div id="studium-pdf-viewer" style={{ width: "100%", height: "100%" }} />
+          {blobUrl && <iframe src={blobUrl} title={mat.name} style={{ width: "100%", height: "100%", border: "none" }} />}
+        </div>
 
-        {/* Adobe PDF Embed API container */}
-        <div id="studium-pdf-viewer" style={{ width: "100%", height: "100%" }} />
-
-        {/* Fallback: native iframe viewer */}
-        {blobUrl && (
-          <iframe
-            src={blobUrl}
-            title={mat.name}
-            style={{ width: "100%", height: "100%", border: "none" }}
-          />
+        {/* AI Side Panel */}
+        {aiOpen && (
+          <div style={{ width: 380, maxWidth: "40vw", background: P.bg, borderLeft: `1px solid ${P.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+            <div style={{ padding: "12px 16px", borderBottom: `1px solid ${P.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: P.text }}>
+                {aiActions.find(a => a.id === aiAction)?.icon} {aiActions.find(a => a.id === aiAction)?.label}
+              </span>
+              <button onClick={() => setAiOpen(false)} style={{ color: P.textMuted, padding: 4, fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflow: "auto", padding: "14px 16px" }}>
+              {extracting && (
+                <div style={{ textAlign: "center", padding: 20, color: P.textMuted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <div style={{ width: 14, height: 14, border: `2px solid ${P.redMuted}`, borderTopColor: P.red, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                  Extrayendo texto...
+                </div>
+              )}
+              {aiLoading && !extracting && (
+                <div style={{ textAlign: "center", padding: 20, color: P.textMuted, fontSize: 13 }}>
+                  <div style={{ width: 14, height: 14, border: `2px solid ${P.redMuted}`, borderTopColor: P.red, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 10px" }} />
+                  Analizando con IA...
+                </div>
+              )}
+              {aiResult && !aiLoading && (
+                <>
+                  <RenderMarkdown text={aiResult} />
+                  <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px solid ${P.borderLight}` }}>
+                    <ShareButtons text={aiResult} title={`${aiActions.find(a => a.id === aiAction)?.label} — ${mat.name}`} compact />
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>
