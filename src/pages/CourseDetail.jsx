@@ -196,10 +196,6 @@ function FormattedContent({ text }) {
             {para}
           </p>
         );
-      })}
-    </div>
-  );
-}
 
 /**
  * Google Drive folder picker modal
