@@ -160,43 +160,6 @@ function FormattedContent({ text }) {
   );
 }
 
-        // Check for sub-lines
-        const subLines = para.split("\n").map(l => l.trim()).filter(Boolean);
-        if (subLines.length > 1) {
-          return (
-            <div key={i} style={{ marginBottom: 14 }}>
-              {subLines.map((line, j) => {
-                if (isHeading(line)) {
-                  return (
-                    <h4 key={j} style={{ fontSize: 14, fontWeight: 700, color: P.text, margin: "12px 0 6px" }}>
-                      {line}
-                    </h4>
-                  );
-                }
-                if (isListItem(line) || isNumberedItem(line)) {
-                  return (
-                    <div key={j} style={{ display: "flex", gap: 8, marginBottom: 4, paddingLeft: 14 }}>
-                      <span style={{ color: P.redLight, flexShrink: 0, fontSize: 12 }}>•</span>
-                      <span style={{ fontSize: 13 }}>{line.replace(/^[\-•·▪►\d]+[\.\)]*\s*/, "")}</span>
-                    </div>
-                  );
-                }
-                return <p key={j} style={{ margin: "3px 0", textAlign: "justify" }}>{line}</p>;
-              })}
-            </div>
-          );
-        }
-
-        return (
-          <p key={i} style={{
-            margin: "0 0 14px",
-            textAlign: "justify",
-            hyphens: "auto",
-          }}>
-            {para}
-          </p>
-        );
-
 /**
  * Google Drive folder picker modal
  */
