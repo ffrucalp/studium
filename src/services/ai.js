@@ -5,13 +5,27 @@ const DEFAULT_MODEL = "arcee-ai/trinity-large-preview:free";
 
 /**
  * Call AI via OpenRouter (dev) or Cloudflare Worker proxy (production).
+ * @param {string} prompt - The text prompt
+ * @param {string} systemPrompt - System prompt (default tutor)
+ * @param {Array} images - Optional array of image objects for vision [{data: "base64...", mimeType: "image/png"}]
  */
-export async function callAI(prompt, systemPrompt = DEFAULT_SYSTEM) {
+export async function callAI(prompt, systemPrompt = DEFAULT_SYSTEM, images = null) {
   try {
     const apiKey = import.meta.env.VITE_OPENROUTER_KEY;
 
+    // Build user message content
+    let userContent = prompt;
+    if (images && images.length > 0) {
+      userContent = [
+        ...images.map(img => ({
+          type: "image_url",
+          image_url: { url: img.data.startsWith("data:") ? img.data : `data:${img.mimeType || "application/pdf"};base64,${img.data}` },
+        })),
+        { type: "text", text: prompt },
+      ];
+    }
+
     if (apiKey) {
-      // Dev mode: direct OpenRouter call
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -25,7 +39,7 @@ export async function callAI(prompt, systemPrompt = DEFAULT_SYSTEM) {
           max_tokens: 8192,
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: prompt },
+            { role: "user", content: userContent },
           ],
         }),
       });
@@ -41,7 +55,7 @@ export async function callAI(prompt, systemPrompt = DEFAULT_SYSTEM) {
     const res = await fetch(CONFIG.AI_PROXY_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, systemPrompt }),
+      body: JSON.stringify({ prompt, systemPrompt, images }),
     });
     const data = await res.json();
     return data.response || "No pude generar una respuesta.";

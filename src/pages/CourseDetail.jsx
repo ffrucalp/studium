@@ -400,8 +400,18 @@ function PDFViewerModal({ mat, moodleToken, onClose }) {
     let text = extractedText;
     if (!text) text = await doExtract();
 
-    if (!text) {
-      setAiResult("No se pudo extraer el texto de este archivo. Probá con la función **Digitalizar apuntes** para archivos pesados.");
+    if (!text || text.length < 20) {
+      // Text extraction failed — try vision AI with the PDF
+      try {
+        const file = mat.files?.[0];
+        const data = await downloadFile(moodleToken, file.fileurl);
+        const prompt = `Analizá este documento PDF. ${actionInstructions[action]}\n\nRespondé en español.`;
+        const images = [{ data: data.content, mimeType: "application/pdf" }];
+        const result = await callAI(prompt, undefined, images);
+        setAiResult(result);
+      } catch (e) {
+        setAiResult("No se pudo procesar este archivo. Probá con la función **Digitalizar apuntes** tomando capturas de pantalla del PDF.");
+      }
       setAiLoading(false);
       return;
     }

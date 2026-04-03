@@ -1069,7 +1069,10 @@ async function aiProxy(body, env) {
   if (images && images.length > 0) {
     userContent = [
       { type: "text", text: prompt },
-      ...images.map(img => ({ type: "image_url", image_url: { url: img } })),
+      ...images.map(img => {
+        const url = typeof img === "string" ? img : `data:${img.mimeType || "image/png"};base64,${img.data}`;
+        return { type: "image_url", image_url: { url } };
+      }),
     ];
   } else {
     userContent = prompt;
