@@ -5,7 +5,7 @@ import {
   Home, Sparkles, Calendar, HelpCircle, Settings,
   GraduationCap, BookOpen, ChevronLeft, ChevronDown, ChevronRight as ChevronR,
   Menu, Library, Calculator, Camera, MessageCircle, Radio, Users,
-  Sun, Moon, Layers, FlaskConical,
+  Sun, Moon, Layers, FlaskConical, GitBranch,
 } from "lucide-react";
 
 const mainNav = [
@@ -22,6 +22,7 @@ const studyNav = [
   { id: "scan", label: "Digitalizar", Icon: Camera },
   { id: "quizzes", label: "Cuestionarios", Icon: HelpCircle },
   { id: "flashcards", label: "Flashcards", Icon: Layers },
+  { id: "conceptmap", label: "Mapas conceptuales", Icon: GitBranch },
   { id: "quiz", label: "Práctica", Icon: FlaskConical },
 ];
 
