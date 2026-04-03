@@ -1,8 +1,10 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
 import { callAI } from "../services/ai";
 import { getCourseContents, extractFileText } from "../services/moodle";
+import CourseMaterialPicker from "../components/CourseMaterialPicker";
 import {
   Layers, ChevronRight, ArrowLeft, Loader2, RotateCcw,
   ThumbsUp, ThumbsDown, Repeat, Sparkles, BookOpen,
@@ -31,6 +33,8 @@ export default function Flashcards() {
   const [topic, setTopic] = useState("");
   const [cardCount, setCardCount] = useState(15);
   const [savedData, setSavedData] = useState(loadSavedCards);
+  const [selectedPdf, setSelectedPdf] = useState(null);
+  const [pdfContent, setPdfContent] = useState(null);
 
   // Get saved cards for a course
   const getSavedCards = (courseId) => savedData[courseId]?.cards || [];
@@ -42,46 +46,40 @@ export default function Flashcards() {
     setCards([]);
 
     try {
-      // Get course materials
-      const contents = await getCourseContents(moodleToken, course.id);
-      let materialText = "";
-
-      // Try to extract text from first few files
-      for (const section of (contents || [])) {
-        for (const mod of (section.modules || [])) {
-          if (materialText.length > 6000) break;
-          if (mod.modname === "resource" && mod.contents?.[0]?.fileurl) {
-            try {
-              const result = await extractFileText(moodleToken, mod.contents[0].fileurl);
-              if (result?.text && result.text.length > 50) {
-                materialText += `\n\n--- ${mod.name} ---\n${result.text.substring(0, 3000)}`;
-              }
-            } catch {}
-          }
-        }
-      }
-
       const topicInstruction = topic.trim()
         ? `Enfocate específicamente en el tema: "${topic}".`
         : "Cubrí los temas principales de la materia.";
 
-      const contextPart = materialText.length > 100
-        ? `\n\nContenido real de la materia:\n${materialText.substring(0, 8000)}`
-        : "";
-
-      const prompt = `Generá exactamente ${cardCount} flashcards de estudio para la materia "${course.fullname}" de la Lic. en Gobernanza de Datos (UCALP).
-${topicInstruction}
-${contextPart}
-
-IMPORTANTE: Respondé SOLO con un JSON array válido, sin texto adicional ni backticks. Cada objeto debe tener:
+      const jsonInstruction = `\n\nIMPORTANTE: Respondé SOLO con un JSON array válido, sin texto adicional ni backticks. Cada objeto debe tener:
 - "q": la pregunta (corta y clara)
 - "a": la respuesta (concisa, 1-3 oraciones)
 - "d": dificultad (1=fácil, 2=medio, 3=difícil)
 
-Ejemplo de formato:
-[{"q":"¿Qué es la gobernanza de datos?","a":"Es el conjunto de procesos, políticas y estándares que aseguran la gestión efectiva de los datos en una organización.","d":1}]`;
+Ejemplo: [{"q":"¿Qué es X?","a":"Es Y.","d":1}]`;
 
-      const result = await callAI(prompt);
+      let result;
+      if (pdfContent) {
+        const prompt = `Analizá este documento PDF y generá exactamente ${cardCount} flashcards de estudio. ${topicInstruction}${jsonInstruction}`;
+        const images = [{ data: pdfContent, mimeType: "application/pdf" }];
+        result = await callAI(prompt, undefined, images);
+      } else {
+        const contents = await getCourseContents(moodleToken, course.id);
+        let materialText = "";
+        for (const section of (contents || [])) {
+          for (const mod of (section.modules || [])) {
+            if (materialText.length > 6000) break;
+            if (mod.modname === "resource" && mod.contents?.[0]?.fileurl) {
+              try {
+                const r = await extractFileText(moodleToken, mod.contents[0].fileurl);
+                if (r?.text && r.text.length > 50) materialText += `\n\n--- ${mod.name} ---\n${r.text.substring(0, 3000)}`;
+              } catch {}
+            }
+          }
+        }
+        const contextPart = materialText.length > 100 ? `\n\nContenido real:\n${materialText.substring(0, 8000)}` : "";
+        const prompt = `Generá exactamente ${cardCount} flashcards para "${course.fullname}". ${topicInstruction}${contextPart}${jsonInstruction}`;
+        result = await callAI(prompt);
+      }
 
       // Parse JSON from response
       let parsed;
@@ -117,7 +115,7 @@ Ejemplo de formato:
       console.error("Error generating flashcards:", e);
     }
     setGenerating(false);
-  }, [moodleToken, topic, cardCount, savedData]);
+  }, [moodleToken, topic, cardCount, savedData, pdfContent]);
 
   // Start studying
   const startStudy = (courseCards) => {
@@ -302,6 +300,19 @@ Ejemplo de formato:
         <div style={{ background: P.card, borderRadius: 16, border: `1px solid ${P.border}`, padding: "20px 24px", marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: P.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
             <Sparkles size={16} color={P.red} /> Generar flashcards
+          </div>
+
+          {/* PDF picker */}
+          <div style={{ marginBottom: 12 }}>
+            <CourseMaterialPicker courseId={selectedCourse.id} moodleToken={moodleToken}
+              selected={selectedPdf} onSelect={f => { setSelectedPdf(f); setPdfContent(null); }}
+              onContentReady={setPdfContent} />
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "10px 0", color: P.textMuted, fontSize: 11 }}>
+            <div style={{ flex: 1, height: 1, background: P.borderLight }} />
+            {selectedPdf ? "o agregá un tema específico" : "o escribí un tema"}
+            <div style={{ flex: 1, height: 1, background: P.borderLight }} />
           </div>
 
           <input type="text" value={topic} onChange={e => setTopic(e.target.value)}

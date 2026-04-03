@@ -4,6 +4,7 @@ import { useApp } from "../context/AppContext";
 import { callAI } from "../services/ai";
 import { getCourseContents, extractFileText } from "../services/moodle";
 import ShareButtons from "../components/ShareButtons";
+import CourseMaterialPicker from "../components/CourseMaterialPicker";
 import {
   GitBranch, ChevronRight, ArrowLeft, Loader2, Sparkles, RotateCcw, Download, Printer, Image,
 } from "lucide-react";
@@ -24,6 +25,8 @@ export default function ConceptMap() {
   const [generating, setGenerating] = useState(false);
   const [mapData, setMapData] = useState(null);
   const [error, setError] = useState(null);
+  const [selectedPdf, setSelectedPdf] = useState(null);
+  const [pdfContent, setPdfContent] = useState(null);
   const svgRef = useRef(null);
 
   const generateMap = useCallback(async (course) => {
@@ -32,25 +35,9 @@ export default function ConceptMap() {
     setError(null);
 
     try {
-      const contents = await getCourseContents(moodleToken, course.id);
-      let materialText = "";
-      for (const section of (contents || [])) {
-        for (const mod of (section.modules || [])) {
-          if (materialText.length > 5000) break;
-          if (mod.modname === "resource" && mod.contents?.[0]?.fileurl) {
-            try {
-              const result = await extractFileText(moodleToken, mod.contents[0].fileurl);
-              if (result?.text && result.text.length > 50) materialText += `\n${mod.name}: ${result.text.substring(0, 2000)}`;
-            } catch {}
-          }
-        }
-      }
-
       const topicPart = topic.trim() ? `Enfocate específicamente en: "${topic}".` : "";
-      const contextPart = materialText.length > 100 ? `\n\nContenido de la materia:\n${materialText.substring(0, 6000)}` : "";
 
-      const prompt = `Generá un mapa conceptual académico detallado para "${course.fullname}". ${topicPart}${contextPart}
-
+      const jsonSchema = `
 Respondé SOLO con JSON válido (sin backticks ni texto extra):
 {
   "title": "TÍTULO EN MAYÚSCULAS",
@@ -79,7 +66,31 @@ Reglas:
 - Todo en español, académico y preciso
 - Los headers van en MAYÚSCULAS`;
 
-      const result = await callAI(prompt);
+      let result;
+      if (pdfContent) {
+        // Use vision AI with the selected PDF
+        const prompt = `Analizá este documento PDF y generá un mapa conceptual académico detallado. ${topicPart}\n${jsonSchema}`;
+        const images = [{ data: pdfContent, mimeType: "application/pdf" }];
+        result = await callAI(prompt, undefined, images);
+      } else {
+        // Fallback: extract text from course materials
+        const contents = await getCourseContents(moodleToken, course.id);
+        let materialText = "";
+        for (const section of (contents || [])) {
+          for (const mod of (section.modules || [])) {
+            if (materialText.length > 5000) break;
+            if (mod.modname === "resource" && mod.contents?.[0]?.fileurl) {
+              try {
+                const r = await extractFileText(moodleToken, mod.contents[0].fileurl);
+                if (r?.text && r.text.length > 50) materialText += `\n${mod.name}: ${r.text.substring(0, 2000)}`;
+              } catch {}
+            }
+          }
+        }
+        const contextPart = materialText.length > 100 ? `\n\nContenido de la materia:\n${materialText.substring(0, 6000)}` : "";
+        const prompt = `Generá un mapa conceptual académico detallado para "${course.fullname}". ${topicPart}${contextPart}\n${jsonSchema}`;
+        result = await callAI(prompt);
+      }
 
       let parsed;
       try {
@@ -98,7 +109,7 @@ Reglas:
       setError("Error: " + e.message);
     }
     setGenerating(false);
-  }, [moodleToken, topic]);
+  }, [moodleToken, topic, pdfContent]);
 
   // Download SVG
   const downloadSVG = () => {
@@ -208,6 +219,21 @@ Reglas:
           <div style={{ fontSize: 14, fontWeight: 700, color: P.text, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
             <Sparkles size={16} color={P.red} /> Generar mapa conceptual
           </div>
+
+          {/* PDF picker */}
+          <div style={{ marginBottom: 12 }}>
+            <CourseMaterialPicker courseId={selectedCourse.id} moodleToken={moodleToken}
+              selected={selectedPdf} onSelect={f => { setSelectedPdf(f); setPdfContent(null); }}
+              onContentReady={setPdfContent} />
+          </div>
+
+          {/* Divider */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "10px 0", color: P.textMuted, fontSize: 11 }}>
+            <div style={{ flex: 1, height: 1, background: P.borderLight }} />
+            {selectedPdf ? "o agregá un tema específico" : "o escribí un tema"}
+            <div style={{ flex: 1, height: 1, background: P.borderLight }} />
+          </div>
+
           <input type="text" value={topic} onChange={e => setTopic(e.target.value)}
             placeholder="Tema específico (opcional, ej: 'presocráticos', 'gobernanza de datos')"
             style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `1.5px solid ${P.border}`, fontSize: 14, color: P.text, background: P.bg, fontFamily: ff.body, outline: "none", marginBottom: 14, boxSizing: "border-box" }}
