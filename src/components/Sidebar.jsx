@@ -18,6 +18,7 @@ const navItems = [
   { id: "scan", label: "Digitalizar", Icon: Camera },
   { id: "chat", label: "Tutor IA", Icon: Sparkles },
   { id: "planner", label: "Planificador", Icon: Calendar },
+  { id: "quizzes", label: "Cuestionarios", Icon: HelpCircle },
   { id: "quiz", label: "Práctica", Icon: HelpCircle },
   { id: "settings", label: "Ajustes", Icon: Settings },
 ];

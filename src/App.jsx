@@ -18,6 +18,7 @@ import ScanNotesPage from "./pages/ScanNotes";
 import CoursesPage from "./pages/Courses";
 import MessagesPage from "./pages/Messages";
 import LiveChatPage from "./pages/LiveChat";
+import QuizzesPage from "./pages/Quizzes";
 
 export default function App() {
   const { user, moodleToken, courses, selectedCourse, setSelectedCourse, loginWithGoogle, setGoogleTokens } = useApp();
@@ -112,6 +113,7 @@ export default function App() {
       case "courses": return <CoursesPage onSelectCourse={selectCourse} />;
       case "messages": return <MessagesPage />;
       case "livechat": return <LiveChatPage />;
+      case "quizzes": return <QuizzesPage />;
       case "career": return <Career />;
       case "library": return <LibraryPage />;
       case "wolfram": return <WolframPage />;
