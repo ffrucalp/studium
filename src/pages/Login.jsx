@@ -21,7 +21,7 @@ export default function Login({ onMockLogin }) {
 
       <div className="fade-in" style={{ background: P.card, borderRadius: 24, padding: "52px 44px", maxWidth: 440, width: "90%", textAlign: "center", boxShadow: "0 4px 40px rgba(26,82,118,0.08), 0 1px 3px rgba(0,0,0,0.04)", border: `1px solid ${P.border}`, position: "relative" }}>
         <div style={{ marginBottom: 32 }}>
-          <img src="/ucalp-logo.png" alt="UCALP" style={{ width: 90, height: 90, borderRadius: 20, margin: "0 auto 20px", display: "block", objectFit: "contain" }} />
+          <img src="/ucalp-logo.png" alt="UCALP" style={{ width: 180, height: 180, borderRadius: 20, margin: "0 auto 20px", display: "block", objectFit: "contain" }} />
           <h1 style={{ fontFamily: ff.heading, fontSize: 36, fontWeight: 800, color: P.red, marginBottom: 6, letterSpacing: -0.5 }}>Studium</h1>
           <p style={{ color: P.textMuted, fontSize: 14, lineHeight: 1.6 }}>
             Plataforma académica inteligente<br />
