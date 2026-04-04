@@ -80,10 +80,8 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
       <div style={{ padding: open ? "18px 16px" : "18px 0", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", alignItems: "center" }}>
         {open ? (
           <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 10 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: P.red, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#fff" }}>
-              <GraduationCap size={20} />
-            </div>
-            <span style={{ color: "#fff", fontFamily: ff.heading, fontSize: 21, fontWeight: 700, whiteSpace: "nowrap", flex: 1 }}>
+            <img src="/favicon-ucalp-180.png" alt="UCALP" style={{ width: 36, height: 36, borderRadius: 8, flexShrink: 0 }} />
+            <span style={{ color: "#fff", fontFamily: ff.heading, fontSize: 20, fontWeight: 700, whiteSpace: "nowrap", flex: 1 }}>
               Studium
             </span>
             <button onClick={() => setOpen(false)}
@@ -96,10 +94,10 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
           </div>
         ) : (
           <button onClick={() => setOpen(true)}
-            style={{ width: 42, height: 42, borderRadius: 10, background: P.red, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", border: "none", cursor: "pointer", transition: "all 0.2s", boxShadow: "0 2px 8px rgba(183,28,28,0.25)" }}
+            style={{ width: 42, height: 42, borderRadius: 10, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", transition: "all 0.2s", padding: 2 }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.06)"; }} onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
             title="Expandir menú">
-            <Menu size={20} />
+            <img src="/favicon-ucalp-180.png" alt="UCALP" style={{ width: 36, height: 36, borderRadius: 8 }} />
           </button>
         )}
       </div>

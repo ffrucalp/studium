@@ -102,7 +102,7 @@ export default function ScanNotes() {
     const win = window.open("", "_blank");
     win.document.write(`<!DOCTYPE html><html><head><title>Apuntes Digitalizados</title>
       <style>body{font-family:Georgia,serif;max-width:700px;margin:40px auto;padding:20px;line-height:1.8;color:#1a1a1a}
-      h1,h2,h3{font-family:'Crimson Pro',serif;color:#B71C1C}table{border-collapse:collapse;width:100%}
+      h1,h2,h3{font-family:'Inter','Calibri',sans-serif;color:#1A5276}table{border-collapse:collapse;width:100%}
       td,th{border:1px solid #ccc;padding:8px;text-align:left}pre,code{background:#f5f5f5;padding:2px 6px;border-radius:3px}
       @media print{body{margin:20px}}</style></head>
       <body>${result.replace(/\n/g, "<br>")}</body></html>`);

@@ -47,7 +47,7 @@ export default function Courses({ onSelectCourse }) {
               cursor: "pointer", transition: "all 0.2s",
             }}
             onClick={() => onSelectCourse(course)}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 8px 28px rgba(183,28,28,0.06)"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 8px 28px rgba(26,82,118,0.06)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
           >
             <div style={{ height: 5, background: `linear-gradient(90deg, ${course.color}, ${course.color}88)` }} />

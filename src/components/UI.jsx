@@ -24,7 +24,7 @@ export function Btn({ children, primary, onClick, disabled, style: s, ...rest })
         if (!disabled) {
           e.currentTarget.style.transform = "translateY(-1px)";
           e.currentTarget.style.boxShadow = primary
-            ? "0 4px 16px rgba(183,28,28,0.3)"
+            ? "0 4px 16px rgba(26,82,118,0.3)"
             : "0 2px 8px rgba(0,0,0,0.06)";
         }
       }}

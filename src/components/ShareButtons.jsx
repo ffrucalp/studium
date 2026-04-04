@@ -71,8 +71,8 @@ export default function ShareButtons({ text, title = "Desde Studium UCALP", comp
         </button>
 
         {/* Moodle Message */}
-        <button onClick={() => setShowMoodleModal(true)} style={{ ...btnStyle, color: "#B71C1C" }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = "#B71C1C"} onMouseLeave={e => e.currentTarget.style.borderColor = P.border}>
+        <button onClick={() => setShowMoodleModal(true)} style={{ ...btnStyle, color: "#1A5276" }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = "#1A5276"} onMouseLeave={e => e.currentTarget.style.borderColor = P.border}>
           <MessageCircle size={13} />
           {!compact && "Moodle"}
         </button>
@@ -141,7 +141,7 @@ function MoodleSendModal({ text, title, onClose }) {
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: `1px solid ${P.borderLight}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <MessageCircle size={18} color="#B71C1C" />
+            <MessageCircle size={18} color="#1A5276" />
             <h3 style={{ fontSize: 15, fontWeight: 700, color: P.text, fontFamily: ff.heading }}>Enviar por Moodle</h3>
           </div>
           <button onClick={onClose} style={{ padding: 4, color: P.textMuted }}><X size={18} /></button>

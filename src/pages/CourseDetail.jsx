@@ -10,7 +10,7 @@ import ShareButtons from "../components/ShareButtons";
 import { BookOpen, Sparkles, HelpCircle, FileText, HardDrive, Check, Eye, Loader, Maximize2, Minimize2, Type, FolderOpen, ChevronRight, ChevronDown, Plus, ArrowLeft, FileSearch, MessageSquare, Megaphone, Users, Clock } from "lucide-react";
 
 const FILE_COLORS = {
-  resource: { bg: "#FFEBEE", fg: "#B71C1C" },
+  resource: { bg: "#D4E6F1", fg: "#1A5276" },
   page: { bg: "#E3F2FD", fg: "#1565C0" },
   assign: { bg: "#DBEAFE", fg: "#2563EB" },
   url: { bg: "#E8F5E9", fg: "#2E7D32" },
@@ -116,13 +116,13 @@ function FormattedContent({ text }) {
   const isNumberedItem = (t) => /^\d+[\.\)]\s/.test(t) && t.length < 300;
 
   return (
-    <div style={{ fontFamily: "'Source Sans 3', sans-serif", fontSize: 14, lineHeight: 1.8, color: P.textSec }}>
+    <div style={{ fontFamily: "'Inter', 'Calibri', sans-serif", fontSize: 14, lineHeight: 1.8, color: P.textSec }}>
       {finalBlocks.map((para, i) => {
         if (isHeading(para)) {
           return (
             <h3 key={i} style={{
               fontSize: 16, fontWeight: 700, color: P.red,
-              fontFamily: "'Crimson Pro', serif",
+              fontFamily: ff.heading,
               margin: i === 0 ? "0 0 10px" : "24px 0 8px",
               paddingBottom: 4, borderBottom: `1px solid ${P.borderLight}`,
             }}>
@@ -1303,7 +1303,7 @@ export default function CourseDetail({ course, onBack, onNavigateChat, onNavigat
                   <FileText size={18} />
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <h2 style={{ fontSize: 18, fontWeight: 700, color: P.text, fontFamily: "'Crimson Pro', serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, color: P.text, fontFamily: ff.heading, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {selectedMat.name}
                   </h2>
                   <span style={{ fontSize: 12, color: P.textMuted }}>

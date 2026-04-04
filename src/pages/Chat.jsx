@@ -86,7 +86,7 @@ export default function Chat() {
                 color: msg.role === "user" ? "#fff" : P.text,
                 fontSize: 14, lineHeight: 1.65,
                 border: msg.role === "user" ? "none" : `1px solid ${P.border}`,
-                boxShadow: msg.role === "user" ? "0 2px 10px rgba(183,28,28,0.2)" : "0 1px 4px rgba(0,0,0,0.03)",
+                boxShadow: msg.role === "user" ? "0 2px 10px rgba(26,82,118,0.2)" : "0 1px 4px rgba(0,0,0,0.03)",
               }}
             >
               {msg.role === "assistant" ? <>

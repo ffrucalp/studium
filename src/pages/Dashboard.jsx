@@ -68,7 +68,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
       const moodleEvts = (mCal?.events || []).map(e => ({
         id: `m-${e.id}`, title: e.name, start: new Date(e.timestart * 1000),
         end: new Date((e.timestart + (e.timeduration || 3600)) * 1000),
-        type: "moodle", color: "#B71C1C", course: e.courseid,
+        type: "moodle", color: "#1A5276", course: e.courseid,
         url: e.url, description: e.description?.replace(/<[^>]+>/g, "").substring(0, 120) || "",
       }));
       if (!cancelled) setCalEvents(prev => [...moodleEvts, ...prev.filter(e => e.type !== "moodle")]);
@@ -214,7 +214,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
             <div style={{ padding: "14px 20px", borderBottom: `1px solid ${P.borderLight}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Calendar size={16} color="#2563eb" /><h3 style={{ fontSize: 15, fontWeight: 700, color: P.text, fontFamily: ff.heading }}>Calendario</h3></div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 4, background: "#B71C1C", display: "inline-block" }} /><span style={{ fontSize: 11, color: P.textMuted }}>Moodle</span>
+                <span style={{ width: 8, height: 8, borderRadius: 4, background: "#1A5276", display: "inline-block" }} /><span style={{ fontSize: 11, color: P.textMuted }}>Moodle</span>
                 {googleAccessToken && <><span style={{ width: 8, height: 8, borderRadius: 4, background: "#4285F4", display: "inline-block", marginLeft: 6 }} /><span style={{ fontSize: 11, color: P.textMuted }}>Google</span></>}
               </div>
             </div>
@@ -250,7 +250,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
                       <div style={{ fontSize: 14, fontWeight: isToday ? 800 : 500, color: isToday ? P.red : P.text }}>{day}</div>
                       {evts.length > 0 && (
                         <div style={{ display: "flex", gap: 3, justifyContent: "center", marginTop: 4 }}>
-                          {hasMoodle && <div style={{ width: 6, height: 6, borderRadius: 3, background: "#B71C1C" }} />}
+                          {hasMoodle && <div style={{ width: 6, height: 6, borderRadius: 3, background: "#1A5276" }} />}
                           {hasGoogle && <div style={{ width: 6, height: 6, borderRadius: 3, background: "#4285F4" }} />}
                         </div>
                       )}
@@ -344,7 +344,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
               : (notifications || []).slice(0, 8).map((n, i) => {
                 const compLabels = { mod_forum: "Foro", mod_assign: "Tarea", mod_quiz: "Quiz", mod_resource: "Recurso", core: "Sistema" };
                 const compName = compLabels[n.component] || n.component?.replace("mod_", "") || "";
-                const compColors = { mod_forum: "#E65100", mod_assign: "#2563EB", mod_quiz: "#6A1B9A", mod_resource: "#B71C1C" };
+                const compColors = { mod_forum: "#E65100", mod_assign: "#2563EB", mod_quiz: "#6A1B9A", mod_resource: "#1A5276" };
                 const compColor = compColors[n.component] || "#7c3aed";
                 // Try to find course name from contexturl
                 let courseName = "";

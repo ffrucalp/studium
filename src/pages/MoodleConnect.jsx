@@ -27,7 +27,7 @@ export default function MoodleConnect({ onConnected }) {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: P.cream, position: "relative" }}>
       <div style={{ position: "absolute", inset: 0, opacity: 0.4, backgroundImage: `linear-gradient(${P.border} 1px, transparent 1px), linear-gradient(90deg, ${P.border} 1px, transparent 1px)`, backgroundSize: "60px 60px" }} />
 
-      <div className="fade-in" style={{ background: P.card, borderRadius: 24, padding: "48px 40px", maxWidth: 440, width: "90%", boxShadow: "0 4px 40px rgba(183,28,28,0.06)", border: `1px solid ${P.border}`, position: "relative" }}>
+      <div className="fade-in" style={{ background: P.card, borderRadius: 24, padding: "48px 40px", maxWidth: 440, width: "90%", boxShadow: "0 4px 40px rgba(26,82,118,0.06)", border: `1px solid ${P.border}`, position: "relative" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ width: 56, height: 56, borderRadius: 14, background: P.redSoft, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: P.red }}>
             <Link size={28} />
