@@ -2,6 +2,7 @@ import { useState } from "react";
 import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
 import { callAI } from "../services/ai";
+import { createGoogleDoc, ensureDriveFolder } from "../services/google";
 import CourseMaterialPicker from "../components/CourseMaterialPicker";
 import { RenderMarkdown } from "../components/UI";
 import ShareButtons from "../components/ShareButtons";
@@ -34,7 +35,7 @@ function ScoreBadge({ score }) {
 }
 
 export default function TPCorrector() {
-  const { courses, moodleToken } = useApp();
+  const { courses, moodleToken, googleAccessToken } = useApp();
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [text, setText] = useState("");
   const [criteria, setCriteria] = useState("general");
@@ -46,6 +47,7 @@ export default function TPCorrector() {
   const [inputMode, setInputMode] = useState("paste"); // paste | pdf
   const [apaResult, setApaResult] = useState(null);
   const [apaLoading, setApaLoading] = useState(false);
+  const [creatingDoc, setCreatingDoc] = useState(false);
 
   const handleCorrect = async () => {
     if (!text.trim() && !pdfContent) return;
@@ -124,11 +126,30 @@ Reglas:
         const jsonMatch = aiResult.match(/\{[\s\S]*\}/);
         parsed = JSON.parse(jsonMatch ? jsonMatch[0] : aiResult);
       } catch {
-        parsed = JSON.parse(aiResult.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
+        try {
+          parsed = JSON.parse(aiResult.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
+        } catch {
+          // AI didn't return valid JSON — show as text feedback
+          setResult({
+            score: 0,
+            summary: aiResult || "No se pudo procesar el trabajo. Intentá de nuevo.",
+            categories: [],
+            strengths: [],
+            improvements: [],
+            correctedExcerpts: [],
+          });
+          setLoading(false);
+          return;
+        }
       }
       setResult(parsed);
     } catch (e) {
       console.error(e);
+      setResult({
+        score: 0,
+        summary: "Error al procesar el trabajo: " + (e.message || "Intentá de nuevo en unos segundos."),
+        categories: [], strengths: [], improvements: [], correctedExcerpts: [],
+      });
     }
     setLoading(false);
   };
@@ -186,8 +207,26 @@ Devolvé el trabajo completo reformateado en Markdown, con comentarios entre [NO
             </div>
             <button onClick={() => { navigator.clipboard.writeText(apaResult); }}
               style={{ padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: P.redSoft, color: P.red, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-              <ClipboardPaste size={13} /> Copiar todo
+              <ClipboardPaste size={13} /> Copiar
             </button>
+            {googleAccessToken && (
+              <button onClick={async () => {
+                setCreatingDoc(true);
+                try {
+                  const folder = await ensureDriveFolder(googleAccessToken);
+                  const doc = await createGoogleDoc(googleAccessToken, {
+                    title: `${selectedCourse.fullname} — APA 7`,
+                    content: apaResult,
+                    folderId: folder?.id,
+                  });
+                  window.open(doc.url, "_blank");
+                } catch (e) { alert("Error al crear documento: " + e.message); }
+                setCreatingDoc(false);
+              }} disabled={creatingDoc}
+                style={{ padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "#E8F0FE", color: "#1967D2", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                {creatingDoc ? <><Loader2 size={13} className="spin" /> Creando...</> : <><BookOpen size={13} /> Google Docs</>}
+              </button>
+            )}
           </div>
           <div style={{ padding: "20px 24px", maxHeight: "70vh", overflow: "auto" }}>
             <RenderMarkdown text={apaResult} />
@@ -223,7 +262,7 @@ Devolvé el trabajo completo reformateado en Markdown, con comentarios entre [NO
               <h2 style={{ fontFamily: ff.heading, fontSize: 22, fontWeight: 800, color: P.text, marginBottom: 6 }}>Resultado de la corrección</h2>
               <p style={{ fontSize: 13, color: P.textMuted }}>{selectedCourse.fullname} · {CRITERIA.find(c => c.id === criteria)?.label}</p>
             </div>
-            <ScoreBadge score={result.score} />
+            {result.score > 0 && <ScoreBadge score={result.score} />}
           </div>
           {result.summary && (
             <p style={{ fontSize: 14, color: P.textSec, lineHeight: 1.6, marginTop: 14, padding: "12px 16px", background: P.bg, borderRadius: 10 }}>
@@ -306,6 +345,25 @@ Devolvé el trabajo completo reformateado en Markdown, con comentarios entre [NO
         {/* Actions */}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <ShareButtons text={shareText} title={`Corrección — ${selectedCourse.fullname}`} />
+          {googleAccessToken && (
+            <button onClick={async () => {
+              setCreatingDoc(true);
+              try {
+                const docContent = `# Corrección — ${selectedCourse.fullname}\n\n**Nota: ${result.score}/10**\n\n${result.summary}\n\n## Evaluación por categorías\n\n${(result.categories || []).map(c => `### ${c.name} (${c.score}/10)\n${c.feedback}`).join("\n\n")}\n\n## Fortalezas\n\n${(result.strengths || []).map(s => `- ${s}`).join("\n")}\n\n## Mejoras sugeridas\n\n${(result.improvements || []).map(s => `- ${s}`).join("\n")}\n\n## Correcciones puntuales\n\n${(result.correctedExcerpts || []).map(e => `- **Original:** ~~${e.original}~~\n  **Corregido:** ${e.corrected}\n  *${e.reason}*`).join("\n\n")}`;
+                const folder = await ensureDriveFolder(googleAccessToken);
+                const doc = await createGoogleDoc(googleAccessToken, {
+                  title: `Corrección — ${selectedCourse.fullname} — ${new Date().toLocaleDateString("es-AR")}`,
+                  content: docContent,
+                  folderId: folder?.id,
+                });
+                window.open(doc.url, "_blank");
+              } catch (e) { alert("Error: " + e.message); }
+              setCreatingDoc(false);
+            }} disabled={creatingDoc}
+              style={{ padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "#E8F0FE", color: "#1967D2", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+              {creatingDoc ? <><Loader2 size={13} className="spin" /> Creando...</> : <><BookOpen size={13} /> Google Docs</>}
+            </button>
+          )}
           <button onClick={() => setResult(null)}
             style={{ marginLeft: "auto", padding: "8px 16px", borderRadius: 8, background: P.redSoft, color: P.red, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, border: "none", cursor: "pointer" }}>
             <RotateCcw size={13} /> Corregir de nuevo
