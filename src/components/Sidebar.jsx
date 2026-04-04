@@ -113,7 +113,7 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
         {/* ── Mi Estudio section ── */}
         <div style={{ marginTop: 8 }}>
           {open ? (
-            <button onClick={() => setStudyOpen(!studyOpen && !studyActive)}
+            <button onClick={() => setStudyOpen(prev => !prev)}
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 10,
                 padding: "8px 14px", borderRadius: 8, transition: "all 0.15s",

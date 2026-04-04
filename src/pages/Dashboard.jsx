@@ -50,7 +50,7 @@ export default function Dashboard({ onNavigate, onSelectCourse }) {
   const [alertDate, setAlertDate] = useState(null);
 
   useEffect(() => {
-    if (!moodleToken || moodleToken === "mock_token") { setLoading(false); return; }
+    if (!moodleToken || moodleToken === "mock_token" || !moodleUserId) { setLoading(false); return; }
     let cancelled = false;
 
     const load = async () => {
