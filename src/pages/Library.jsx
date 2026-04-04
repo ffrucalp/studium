@@ -214,7 +214,7 @@ export default function Library() {
   const curResults = source === "google" ? gResults : source === "scholar" ? sResults : source === "openalex" ? oaResults : source === "gscholar" ? gsResults : uResults;
 
   return (
-    <div className="fade-in" style={{ maxWidth: 960, margin: "0 auto" }}>
+    <div className="fade-in">
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontFamily: ff.heading, fontSize: 30, color: P.text, fontWeight: 800, marginBottom: 6 }}>Biblioteca</h1>
         <p style={{ color: P.textMuted, fontSize: 15 }}>Buscá en el catálogo UCALP, Google Books, Semantic Scholar y eLibro</p>
