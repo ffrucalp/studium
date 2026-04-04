@@ -21,6 +21,7 @@ import LiveChatPage from "./pages/LiveChat";
 import QuizzesPage from "./pages/Quizzes";
 import FlashcardsPage from "./pages/Flashcards";
 import ConceptMapPage from "./pages/ConceptMap";
+import TPCorrectorPage from "./pages/TPCorrector";
 import ClassmatesPage from "./pages/Classmates";
 
 export default function App() {
@@ -143,6 +144,7 @@ export default function App() {
       case "quizzes": return <QuizzesPage />;
       case "flashcards": return <FlashcardsPage />;
       case "conceptmap": return <ConceptMapPage />;
+      case "corrector": return <TPCorrectorPage />;
       case "classmates": return <ClassmatesPage />;
       case "career": return <Career />;
       case "library": return <LibraryPage />;
