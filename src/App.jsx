@@ -171,7 +171,7 @@ export default function App() {
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         style={{
           display: "none", position: "fixed", top: 12, left: 12, zIndex: 901,
-          width: 40, height: 40, borderRadius: 10, background: P.sidebar, color: "#fff",
+          width: 40, height: 40, borderRadius: 10, background: "#1A5276", color: "#fff",
           alignItems: "center", justifyContent: "center", border: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
         }}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

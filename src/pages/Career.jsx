@@ -62,8 +62,8 @@ export default function Career() {
     : null;
 
   return (
-    <div className="fade-in" style={{ maxWidth: 900 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+    <div className="fade-in" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 56px)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12, flexShrink: 0 }}>
         <div>
           <h1 style={{ fontFamily: ff.heading, fontSize: 26, color: P.text, fontWeight: 800 }}>Mi Carrera</h1>
           <p style={{ color: P.textMuted, fontSize: 14 }}>
@@ -77,7 +77,7 @@ export default function Career() {
 
       {/* Stats cards */}
       {zonaProfile && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16, flexShrink: 0 }}>
           {[
             { label: "Materias aprobadas", value: aprobadas, color: "#16A34A" },
             { label: "Total del plan", value: totalPlan, color: "#2563EB" },
@@ -93,7 +93,7 @@ export default function Career() {
       )}
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: `2px solid ${P.borderLight}`, paddingBottom: 0, overflow: "auto" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 0, borderBottom: `2px solid ${P.borderLight}`, paddingBottom: 0, overflow: "auto", flexShrink: 0 }}>
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             style={{
@@ -112,12 +112,12 @@ export default function Career() {
       </div>
 
       {/* Tab content */}
-      <div style={{ background: P.card, borderRadius: "0 16px 16px 16px", border: `1px solid ${P.border}`, overflow: "hidden" }}>
+      <div style={{ background: P.card, borderRadius: "0 0 16px 16px", border: `1px solid ${P.border}`, overflow: "hidden", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
 
         {/* Historial Académico */}
         {activeTab === "analitico" && (
           zonaProfile?.analitico?.length > 0 ? (
-            <div style={{ overflow: "auto", maxHeight: 500 }}>
+            <div style={{ overflow: "auto", flex: 1 }}>
               <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: P.cream, position: "sticky", top: 0 }}>
@@ -149,7 +149,7 @@ export default function Career() {
         {/* Plan de Estudios */}
         {activeTab === "plan" && (
           zonaProfile?.planEstudios?.length > 0 ? (
-            <div style={{ overflow: "auto", maxHeight: 500 }}>
+            <div style={{ overflow: "auto", flex: 1 }}>
               <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: P.cream, position: "sticky", top: 0 }}>

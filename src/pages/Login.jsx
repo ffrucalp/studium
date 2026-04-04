@@ -24,8 +24,8 @@ export default function Login({ onMockLogin }) {
           <img src="/ucalp-logo.png" alt="UCALP" style={{ width: 90, height: 90, borderRadius: 20, margin: "0 auto 20px", display: "block", objectFit: "contain" }} />
           <h1 style={{ fontFamily: ff.heading, fontSize: 36, fontWeight: 800, color: P.red, marginBottom: 6, letterSpacing: -0.5 }}>Studium</h1>
           <p style={{ color: P.textMuted, fontSize: 14, lineHeight: 1.6 }}>
-            Plataforma acad\u00e9mica inteligente<br />
-            <span style={{ fontWeight: 600, color: P.red }}>Universidad Cat\u00f3lica de La Plata</span>
+            Plataforma académica inteligente<br />
+            <span style={{ fontWeight: 600, color: P.red }}>Universidad Católica de La Plata</span>
           </p>
         </div>
 

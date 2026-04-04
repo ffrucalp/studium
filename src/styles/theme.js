@@ -10,7 +10,7 @@ const LIGHT = {
   bg: "#F8FAFB", card: "#FFFFFF",
   border: "#DCE8F0", borderLight: "#EAF2F8",
   text: "#1A1A1A", textSec: "#4A5568", textMuted: "#8E9EAD",
-  sidebar: "#154360", sidebarHover: "rgba(255,255,255,0.08)", sidebarActive: "rgba(46,134,193,0.25)",
+  sidebar: "linear-gradient(180deg, #1A5276 0%, #1B6B93 50%, #2185B5 100%)", sidebarBg: "#1A5276", sidebarHover: "rgba(255,255,255,0.12)", sidebarActive: "rgba(255,255,255,0.2)",
 };
 
 const DARK = {
@@ -22,7 +22,7 @@ const DARK = {
   bg: "#0F1419", card: "#1A2332",
   border: "#2A3A4A", borderLight: "#1E2D3D",
   text: "#E8EDF2", textSec: "#A8B8C8", textMuted: "#6B7D8D",
-  sidebar: "#0D1B2A", sidebarHover: "rgba(255,255,255,0.08)", sidebarActive: "rgba(46,134,193,0.3)",
+  sidebar: "linear-gradient(180deg, #0D1B2A 0%, #152538 50%, #1C3045 100%)", sidebarBg: "#0D1B2A", sidebarHover: "rgba(255,255,255,0.08)", sidebarActive: "rgba(46,134,193,0.3)",
 };
 
 const stored = typeof localStorage !== "undefined" ? localStorage.getItem("studium_dark") === "true" : false;
