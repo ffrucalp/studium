@@ -15,11 +15,10 @@ export default function Login({ onMockLogin }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: P.cream, position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", inset: 0, opacity: 0.4, backgroundImage: `linear-gradient(${P.border} 1px, transparent 1px), linear-gradient(90deg, ${P.border} 1px, transparent 1px)`, backgroundSize: "60px 60px" }} />
-      <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: `radial-gradient(circle, ${P.redSoft} 0%, transparent 70%)`, opacity: 0.8 }} />
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", backgroundImage: "url('https://www.ucalp.edu.ar/wp-content/uploads/2025/04/pic-gobernanzaDatos-02.jpg')", backgroundSize: "cover", backgroundPosition: "center" }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(26,82,118,0.55)", backdropFilter: "blur(2px)" }} />
 
-      <div className="fade-in" style={{ background: P.card, borderRadius: 24, padding: "52px 44px", maxWidth: 440, width: "90%", textAlign: "center", boxShadow: "0 4px 40px rgba(26,82,118,0.08), 0 1px 3px rgba(0,0,0,0.04)", border: `1px solid ${P.border}`, position: "relative" }}>
+      <div className="fade-in" style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)", borderRadius: 24, padding: "52px 44px", maxWidth: 440, width: "90%", textAlign: "center", boxShadow: "0 8px 40px rgba(0,0,0,0.15)", border: "1px solid rgba(255,255,255,0.6)", position: "relative" }}>
         <div style={{ marginBottom: 32 }}>
           <img src="/ucalp-logo.png" alt="UCALP" style={{ width: 180, height: 180, borderRadius: 20, margin: "0 auto 20px", display: "block", objectFit: "contain" }} />
           <h1 style={{ fontFamily: ff.heading, fontSize: 36, fontWeight: 800, color: P.red, marginBottom: 6, letterSpacing: -0.5 }}>Studium</h1>
