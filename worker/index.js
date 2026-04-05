@@ -9,6 +9,7 @@
  *   POST /api/zona/login       → Login to Zona Interactiva
  *   POST /api/zona/scrape      → Scrape a Zona page
  *   POST /api/zona/profile     → Get student profile + academic data
+ *   POST /api/zona/switch-role → Switch Zona role (Alumno/Docente)
  *   POST /api/google/token     → Exchange OAuth code for tokens
  *   POST /api/google/refresh   → Refresh access token
  *   POST /api/google/calendar  → Create/list calendar events
@@ -1128,7 +1129,7 @@ async function readZonaText(response) {
 }
 
 async function zonaLogin(body, env) {
-  const { username, password } = body;
+  const { username, password, zonaRole } = body; // zonaRole: "A" (alumno) | "D" (docente) | null (auto)
   if (!username || !password) return json({ error: "Faltan usuario o contraseña" }, 400, env);
   try {
     // Step 1: GET login.php with redirect to get session cookie
@@ -1175,13 +1176,16 @@ async function zonaLogin(body, env) {
     }
     if (!html && loginResp.status === 200) html = await readZonaText(loginResp);
 
-    // Step 4: Check if we're on role selection page
-    if (html.includes("Elija el rol") || html.includes("indexElige") || html.includes("aW5kZXhFbGlnZQ==")) {
-      // Select Alumno role
+    // Step 4: Check if we're on role selection page ("Elija el rol")
+    const zonaHasDualRole = html.includes("Elija el rol") || html.includes("indexElige") || html.includes("aW5kZXhFbGlnZQ==");
+
+    if (zonaHasDualRole) {
+      // Select the requested role, default to "D" (Docente) for dual-role users
+      const selectedRole = zonaRole || "D";
       const selectResp = await fetch(`${ZONA_URL}/index.php?m=aW5kZXhFbGlnZQ==`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "Cookie": cookies },
-        body: new URLSearchParams({ tipo: "A" }),
+        body: new URLSearchParams({ tipo: selectedRole }),
         redirect: "manual",
       });
       cookies = mergeCookies(cookies, extractCookies(selectResp));
@@ -1216,13 +1220,17 @@ async function zonaLogin(body, env) {
 
     // Success check
     if (html.includes("selectCarrera") || html.includes("Mis carreras") || html.includes("Legajo")) {
-      return json({ session: cookies, student: parseStudentInfo(html) }, 200, env);
+      return json({
+        session: cookies,
+        student: parseStudentInfo(html),
+        zonaHasDualRole,
+        zonaActiveRole: zonaHasDualRole ? (zonaRole || "D") : null,
+      }, 200, env);
     }
 
     return json({
       error: "No se pudo acceder a Zona Interactiva",
       debug: {
-        
         hasLoginForm: html.includes('name="usuario"'),
         hasRoleSelect: html.includes("Elija el rol"),
         bodyPreview: html.substring(0, 500),
@@ -1230,6 +1238,85 @@ async function zonaLogin(body, env) {
     }, 401, env);
   } catch (err) {
     return json({ error: "Error conectando a Zona", details: err.message }, 500, env);
+  }
+}
+
+/**
+ * Switch Zona Interactiva role mid-session.
+ * Navigates back to role selection, picks new role, returns new session + student info.
+ * body: { session, role } where role = "A" (alumno) | "D" (docente)
+ */
+async function zonaSwitchRole(body, env) {
+  const { session, role } = body;
+  if (!session) return json({ error: "Falta la sesión" }, 400, env);
+  if (!role || !["A", "D"].includes(role)) return json({ error: "Rol inválido. Usar 'A' o 'D'" }, 400, env);
+
+  try {
+    // Step 1: Navigate to the role selection page
+    const selectPageResp = await fetch(`${ZONA_URL}/index.php?m=aW5kZXhFbGlnZQ==`, {
+      headers: { "Cookie": session },
+      redirect: "manual",
+    });
+    let cookies = mergeCookies(session, extractCookies(selectPageResp));
+
+    // Follow any redirects to get to the selection page
+    let loc = selectPageResp.headers.get("location");
+    let attempts = 0;
+    while (loc && attempts < 5) {
+      const r = await fetch(loc.startsWith("http") ? loc : `${ZONA_URL}/${loc.replace(/^\//, "")}`, {
+        headers: { "Cookie": cookies }, redirect: "manual",
+      });
+      cookies = mergeCookies(cookies, extractCookies(r));
+      loc = r.headers.get("location");
+      attempts++;
+    }
+
+    // Step 2: POST the role selection
+    const selectResp = await fetch(`${ZONA_URL}/index.php?m=aW5kZXhFbGlnZQ==`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Cookie": cookies },
+      body: new URLSearchParams({ tipo: role }),
+      redirect: "manual",
+    });
+    cookies = mergeCookies(cookies, extractCookies(selectResp));
+
+    // Step 3: Follow redirects to dashboard
+    loc = selectResp.headers.get("location");
+    let html = "";
+    attempts = 0;
+    while (loc && attempts < 5) {
+      const r = await fetch(loc.startsWith("http") ? loc : `${ZONA_URL}/${loc.replace(/^\//, "")}`, {
+        headers: { "Cookie": cookies }, redirect: "manual",
+      });
+      cookies = mergeCookies(cookies, extractCookies(r));
+      loc = r.headers.get("location");
+      if (!loc) html = await readZonaText(r);
+      attempts++;
+    }
+    if (!html && selectResp.status === 200) html = await readZonaText(selectResp);
+
+    // Step 4: Make sure we're on the dashboard
+    if (!html.includes("selectCarrera") && !html.includes("Mis carreras") && !html.includes("Legajo")) {
+      const inicioResp = await fetch(`${ZONA_URL}/index.php?m=${ZONA_PAGES.inicio}`, {
+        headers: { "Cookie": cookies }, redirect: "manual",
+      });
+      cookies = mergeCookies(cookies, extractCookies(inicioResp));
+      if (inicioResp.status === 200) html = await readZonaText(inicioResp);
+    }
+
+    // Check we're not on login page (session expired)
+    if (html.includes('name="usuario"') || html.includes("login.php")) {
+      return json({ error: "Sesión expirada, necesita re-login" }, 401, env);
+    }
+
+    return json({
+      session: cookies,
+      student: role === "A" ? parseStudentInfo(html) : null,
+      zonaActiveRole: role,
+      success: true,
+    }, 200, env);
+  } catch (err) {
+    return json({ error: "Error cambiando rol en Zona", details: err.message }, 500, env);
   }
 }
 
@@ -1823,6 +1910,7 @@ export default {
         case "/api/zona/login":      return await zonaLogin(body, env);
         case "/api/zona/scrape":     return await zonaScrape(body, env);
         case "/api/zona/profile":    return await zonaProfile(body, env);
+        case "/api/zona/switch-role": return await zonaSwitchRole(body, env);
         case "/api/google/token":    return await googleToken(body, env);
         case "/api/google/refresh":  return await googleRefresh(body, env);
         case "/api/google/calendar": return await googleCalendar(body, env);
