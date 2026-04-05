@@ -15,12 +15,12 @@ const FACULTY_COLORS = [
 const DEFAULT_COLOR = "#2E86C1";
 
 export function getFacultyColor(category) {
-  if (!category) return DEFAULT_COLOR;
+  if (!category) return null;
   const cat = category.toLowerCase();
   for (const fac of FACULTY_COLORS) {
     if (fac.match.some(m => cat.includes(m))) return fac.color;
   }
-  return DEFAULT_COLOR;
+  return null;
 }
 
 export function getFacultyLabel(category) {
@@ -38,7 +38,7 @@ export default function CourseSelector({ courses, selectedId, onSelect }) {
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
       {courses.map(c => {
-        const color = getFacultyColor(c.category);
+        const color = getFacultyColor(c.category) || c.color || DEFAULT_COLOR;
         const isSelected = selectedId === c.id;
         return (
           <button key={c.id} onClick={() => onSelect(c.id)}
