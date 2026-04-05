@@ -35,6 +35,7 @@ const ZONA_PAGES = {
   // Docente pages
   finales: "cHJvZl9jb25zdWx0YUZpbmFs", finalesDetalle: "cHJvZl9jb25zdWx0YUZpbmFsMg==",
   liquidaciones: "bGlxdWlkYWNpb25lcw==",
+  asistencias: "cHJvZl9hc2lzdGVuY2lhcw==", asistenciasAlumnos: "cHJvZl9hc2lzdGVuY2lhc0FsdW1ub3M=",
 };
 
 function cors(env) {

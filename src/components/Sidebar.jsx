@@ -7,7 +7,7 @@ import {
   Menu, Library, Calculator, Camera, MessageCircle, Radio, Users,
   Sun, Moon, Layers, FlaskConical, GitBranch, FileCheck,
   ClipboardList, BarChart3, Megaphone, UserCheck, PenTool,
-  Shield, DollarSign, ScrollText, CalendarCheck,
+  Shield, DollarSign, ScrollText, CalendarCheck, ClipboardCheck,
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════════
@@ -54,6 +54,7 @@ const teacherMgmtNav = [
   { id: "announcements", label: "Anuncios", Icon: Megaphone },
   { id: "coursestats", label: "Estadísticas", Icon: BarChart3 },
   { id: "finales", label: "Finales", Icon: CalendarCheck },
+  { id: "asistencia", label: "Asistencia", Icon: ClipboardCheck },
   { id: "liquidacion", label: "Liquidación", Icon: ScrollText },
   { id: "salary", label: "Cálculo Salarial", Icon: DollarSign },
 ];

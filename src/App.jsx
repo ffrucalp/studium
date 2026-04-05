@@ -32,6 +32,7 @@ import CourseStatsPage from "./pages/CourseStats";
 import FinalesPage from "./pages/Finales";
 import LiquidacionPage from "./pages/Liquidacion";
 import SalaryCalcPage from "./pages/SalaryCalc";
+import AsistenciaPage from "./pages/Asistencia";
 
 export default function App() {
   const { user, moodleToken, courses, selectedCourse, setSelectedCourse, loginWithGoogle, setGoogleTokens, isTeacher } = useApp();
@@ -172,6 +173,7 @@ export default function App() {
       case "announcements": return isTeacher ? <AnnouncementsPage onSelectCourse={selectCourse} /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
       case "coursestats": return isTeacher ? <CourseStatsPage onSelectCourse={selectCourse} /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
       case "finales": return isTeacher ? <FinalesPage /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "asistencia": return isTeacher ? <AsistenciaPage /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
       case "liquidacion": return isTeacher ? <LiquidacionPage /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
       case "salary": return isTeacher ? <SalaryCalcPage /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
 
