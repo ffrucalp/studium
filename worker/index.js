@@ -32,6 +32,9 @@ const ZONA_PAGES = {
   inscripcionFinales: "aW5zY3JpcGNpb25GaW5hbGVzMg==", datosAlumno: "ZGF0b3NBbHVtbm8=",
   boletas: "Ym9sZXRhcw==", constancias: "Y29uc3RhbmNpYXNMaXN0",
   calendario: "Y2FsZW5kYXJpb0FjYWRlbWljbw==", cursadasInscripcion: "Y3Vyc2FkYXNJbnNjcmlwY2lvbg==",
+  // Docente pages
+  finales: "cHJvZl9jb25zdWx0YUZpbmFs", finalesDetalle: "cHJvZl9jb25zdWx0YUZpbmFsMg==",
+  liquidaciones: "bGlxdWlkYWNpb25lcw==",
 };
 
 function cors(env) {
@@ -1358,6 +1361,29 @@ async function zonaProfile(body, env) {
   } catch (err) { return json({ error: err.message }, 500, env); }
 }
 
+/**
+ * Get liquidacion data from Zona Interactiva
+ * body: { session, id_periodo, idPersona }
+ * Uses obtenerLiquidaciones.php (different URL pattern than index.php?m=)
+ */
+async function zonaLiquidacion(body, env) {
+  const { session, id_periodo, idPersona } = body;
+  if (!session) return json({ error: "Falta la sesión" }, 400, env);
+  if (!id_periodo || !idPersona) return json({ error: "Faltan id_periodo o idPersona" }, 400, env);
+
+  try {
+    const resp = await fetch(
+      `${ZONA_URL}/obtenerLiquidaciones.php?id_periodo=${id_periodo}&idPersona=${idPersona}`,
+      { headers: { "Cookie": session } }
+    );
+    if (!resp.ok) return json({ error: "Error al obtener liquidación" }, resp.status, env);
+    const html = await readZonaText(resp);
+    return json({ html }, 200, env);
+  } catch (err) {
+    return json({ error: "Error consultando liquidación", details: err.message }, 500, env);
+  }
+}
+
 // ─── HTML Parsers ────────────────────────────────────────────────
 
 /** Decode common HTML entities (Spanish chars, numeric refs) */
@@ -1911,6 +1937,7 @@ export default {
         case "/api/zona/scrape":     return await zonaScrape(body, env);
         case "/api/zona/profile":    return await zonaProfile(body, env);
         case "/api/zona/switch-role": return await zonaSwitchRole(body, env);
+        case "/api/zona/liquidacion": return await zonaLiquidacion(body, env);
         case "/api/google/token":    return await googleToken(body, env);
         case "/api/google/refresh":  return await googleRefresh(body, env);
         case "/api/google/calendar": return await googleCalendar(body, env);

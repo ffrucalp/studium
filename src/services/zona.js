@@ -57,6 +57,21 @@ export async function zonaGetProfile(session, idCliente = null) {
 }
 
 /**
+ * Get liquidacion data for a period
+ * Uses obtenerLiquidaciones.php (special endpoint, not index.php?m=)
+ */
+export async function zonaLiquidacion(session, idPeriodo, idPersona) {
+  const res = await fetch(`${API_BASE}/api/zona/liquidacion`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session, id_periodo: idPeriodo, idPersona }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data; // { html }
+}
+
+/**
  * Scrape a specific Zona page (raw HTML).
  * page: one of: inicio, analitico, planEstudios, cursadasActuales, 
  *               cursadasAnteriores, inscripcionFinales, datosAlumno,

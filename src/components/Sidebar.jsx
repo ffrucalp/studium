@@ -7,7 +7,7 @@ import {
   Menu, Library, Calculator, Camera, MessageCircle, Radio, Users,
   Sun, Moon, Layers, FlaskConical, GitBranch, FileCheck,
   ClipboardList, BarChart3, Megaphone, UserCheck, PenTool,
-  Shield,
+  Shield, DollarSign, ScrollText, CalendarCheck,
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════════
@@ -53,6 +53,9 @@ const teacherMgmtNav = [
   { id: "submissions", label: "Entregas", Icon: FileCheck },
   { id: "announcements", label: "Anuncios", Icon: Megaphone },
   { id: "coursestats", label: "Estadísticas", Icon: BarChart3 },
+  { id: "finales", label: "Finales", Icon: CalendarCheck },
+  { id: "liquidacion", label: "Liquidación", Icon: ScrollText },
+  { id: "salary", label: "Cálculo Salarial", Icon: DollarSign },
 ];
 
 // Teacher tools section

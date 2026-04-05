@@ -4,7 +4,7 @@ import { useApp } from "../context/AppContext";
 import { Btn } from "../components/UI";
 import {
   Link, Calendar, Mail, LogOut, GraduationCap, BookOpen, HardDrive,
-  Shield, ArrowRightLeft, Loader2, CheckCircle, AlertCircle, Unlink,
+  Shield, ArrowRightLeft, Loader2, CheckCircle, AlertCircle, Unlink, Award,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -12,6 +12,7 @@ export default function SettingsPage() {
     moodleToken, zonaSession, zonaProfile, zonaLoading, loadZonaProfile,
     googleAccessToken, user, logout, userRole, isTeacher, isDualRole,
     availableRoles, connectZonaOnly, disconnectZona,
+    teacherAntiguedad, setTeacherAntiguedad,
   } = useApp();
 
   const [showZonaForm, setShowZonaForm] = useState(false);
@@ -108,6 +109,31 @@ export default function SettingsPage() {
           {conn.connected && <span style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>✓</span>}
         </div>
       ))}
+
+      {/* Teacher antigüedad */}
+      {isTeacher && (
+        <div style={{ background: P.card, borderRadius: 14, border: `1px solid ${P.border}`, padding: "16px 20px", marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 11, background: "#f59e0b10", display: "flex", alignItems: "center", justifyContent: "center", color: "#f59e0b" }}>
+                <Award size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: P.text }}>Antigüedad docente</div>
+                <div style={{ fontSize: 12, color: P.textMuted }}>Se usa para el cálculo salarial</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="number" min="0" max="50" value={teacherAntiguedad}
+                onChange={e => setTeacherAntiguedad(parseInt(e.target.value) || 0)}
+                style={{ width: 60, padding: "8px 10px", borderRadius: 8, border: `1px solid ${P.border}`, background: P.bg, color: P.text, fontSize: 15, fontWeight: 700, textAlign: "center" }}
+              />
+              <span style={{ fontSize: 13, color: P.textMuted }}>años</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Zona Interactiva connect/disconnect section */}
       {!zonaSession ? (

@@ -54,6 +54,7 @@ export function AppProvider({ children }) {
   const [teacherCourses, setTeacherCourses] = useState(saved?.teacherCourses || []);
   const [studentCourses, setStudentCourses] = useState(saved?.studentCourses || []);
   const [roleLoading, setRoleLoading] = useState(false);
+  const [teacherAntiguedad, setTeacherAntiguedad] = useState(saved?.teacherAntiguedad || 0);
   const [moodleToken, setMoodleToken] = useState(saved?.moodleToken || null);
   const [moodleUserId, setMoodleUserId] = useState(saved?.moodleUserId || null);
   const [courses, setCourses] = useState(saved?.courses || []);
@@ -91,12 +92,12 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!user) return;
     saveSession({
-      user, userRole, availableRoles, isDualRole, teacherCourses, studentCourses,
+      user, userRole, availableRoles, isDualRole, teacherCourses, studentCourses, teacherAntiguedad,
       moodleToken, moodleUserId, courses, useMock,
       zonaSession, zonaStudent, zonaHasDualRole, zonaActiveRole,
       googleAccessToken, googleRefreshToken,
     });
-  }, [user, userRole, availableRoles, isDualRole, teacherCourses, studentCourses, moodleToken, moodleUserId, courses, useMock, zonaSession, zonaStudent, zonaHasDualRole, zonaActiveRole, googleAccessToken, googleRefreshToken]);
+  }, [user, userRole, availableRoles, isDualRole, teacherCourses, studentCourses, teacherAntiguedad, moodleToken, moodleUserId, courses, useMock, zonaSession, zonaStudent, zonaHasDualRole, zonaActiveRole, googleAccessToken, googleRefreshToken]);
 
   // ── Auto-refresh Google token on restore ──
   useEffect(() => {
@@ -373,7 +374,7 @@ export function AppProvider({ children }) {
 
   return (
     <AppContext.Provider value={{
-      user, userRole, isTeacher, roleLoading,
+      user, userRole, isTeacher, roleLoading, teacherAntiguedad, setTeacherAntiguedad,
       availableRoles, isDualRole, teacherCourses, studentCourses, switchRole,
       moodleToken, moodleUserId, courses, selectedCourse,
       courseMaterials, useMock,
