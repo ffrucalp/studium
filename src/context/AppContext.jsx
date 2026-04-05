@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { getMoodleToken, getSiteInfo, getUserCourses, getCourseContents, assignCourseColor, parseCourseContents, detectUserRole } from "../services/moodle";
-import { zonaLogin, zonaGetProfile } from "../services/zona";
+import { zonaLogin, zonaGetProfile, zonaSwitchRole } from "../services/zona";
 import { refreshToken } from "../services/google";
 
 const AppContext = createContext(null);
@@ -78,6 +78,8 @@ export function AppProvider({ children }) {
   // Zona Interactiva state
   const [zonaSession, setZonaSession] = useState(saved?.zonaSession || null);
   const [zonaStudent, setZonaStudent] = useState(saved?.zonaStudent || null);
+  const [zonaHasDualRole, setZonaHasDualRole] = useState(saved?.zonaHasDualRole || false);
+  const [zonaActiveRole, setZonaActiveRole] = useState(saved?.zonaActiveRole || null); // "A" | "D" | null
   const [zonaProfile, setZonaProfile] = useState(null);
   const [zonaLoading, setZonaLoading] = useState(false);
 
@@ -91,10 +93,10 @@ export function AppProvider({ children }) {
     saveSession({
       user, userRole, availableRoles, isDualRole, teacherCourses, studentCourses,
       moodleToken, moodleUserId, courses, useMock,
-      zonaSession, zonaStudent,
+      zonaSession, zonaStudent, zonaHasDualRole, zonaActiveRole,
       googleAccessToken, googleRefreshToken,
     });
-  }, [user, userRole, availableRoles, isDualRole, teacherCourses, studentCourses, moodleToken, moodleUserId, courses, useMock, zonaSession, zonaStudent, googleAccessToken, googleRefreshToken]);
+  }, [user, userRole, availableRoles, isDualRole, teacherCourses, studentCourses, moodleToken, moodleUserId, courses, useMock, zonaSession, zonaStudent, zonaHasDualRole, zonaActiveRole, googleAccessToken, googleRefreshToken]);
 
   // ── Auto-refresh Google token on restore ──
   useEffect(() => {
@@ -207,6 +209,26 @@ export function AppProvider({ children }) {
       setZonaSession(zona.session);
       setZonaStudent(zona.student);
 
+      // ── Capture Zona dual role info ──
+      if (zona.zonaHasDualRole) {
+        setZonaHasDualRole(true);
+        setZonaActiveRole(zona.zonaActiveRole || "D");
+        console.log("[Studium] Zona: usuario con doble rol (Alumno + Docente)");
+
+        // If Moodle didn't detect dual role but Zona did, upgrade to dual
+        // This covers the case: teacher in Moodle but also student in a diplomatura (only in Zona)
+        if (!isDualRole) {
+          const currentRoles = [...availableRoles];
+          if (!currentRoles.includes("teacher")) currentRoles.push("teacher");
+          if (!currentRoles.includes("student")) currentRoles.push("student");
+          setAvailableRoles(currentRoles);
+          setIsDualRole(true);
+          // Default to teacher for dual-role users
+          setUserRole("teacher");
+          console.log("[Studium] Dual role detectado via Zona Interactiva → default: docente");
+        }
+      }
+
       // Update user name from Zona if available
       if (zona.student?.nombre) {
         setUser(prev => ({
@@ -225,15 +247,35 @@ export function AppProvider({ children }) {
     }
 
     return results;
-  }, []);
+  }, [availableRoles, isDualRole]);
 
   // ── Switch role (only for dual-role users) ──
-  const switchRole = useCallback((role) => {
-    if (availableRoles.includes(role)) {
-      setUserRole(role);
-      console.log(`[Studium] Rol cambiado a: ${role}`);
+  const switchRole = useCallback(async (role) => {
+    if (!availableRoles.includes(role)) return;
+
+    setUserRole(role);
+    console.log(`[Studium] Rol cambiado a: ${role}`);
+
+    // Also switch Zona session if user has dual role in Zona
+    if (zonaHasDualRole && zonaSession) {
+      const zonaRoleCode = role === "teacher" ? "D" : "A";
+      if (zonaRoleCode !== zonaActiveRole) {
+        try {
+          const result = await zonaSwitchRole(zonaSession, zonaRoleCode);
+          if (result.success) {
+            setZonaSession(result.session);
+            setZonaActiveRole(result.zonaActiveRole);
+            if (result.student) setZonaStudent(result.student);
+            setZonaProfile(null); // Clear cached profile — it's for the other role
+            console.log(`[Studium] Zona: rol cambiado a ${zonaRoleCode === "D" ? "Docente" : "Alumno"}`);
+          }
+        } catch (err) {
+          console.warn("Zona role switch failed:", err.message);
+          // Role switched in Studium but Zona might be stale — not critical
+        }
+      }
     }
-  }, [availableRoles]);
+  }, [availableRoles, zonaHasDualRole, zonaSession, zonaActiveRole]);
 
   // ── Manual role override (for testing / settings) ──
   const setRoleOverride = useCallback((role) => {
@@ -303,6 +345,8 @@ export function AppProvider({ children }) {
     setUseMock(false);
     setZonaSession(null);
     setZonaStudent(null);
+    setZonaHasDualRole(false);
+    setZonaActiveRole(null);
     setZonaProfile(null);
     setGoogleAccessToken(null);
     setGoogleRefreshToken(null);
@@ -315,7 +359,7 @@ export function AppProvider({ children }) {
       availableRoles, isDualRole, teacherCourses, studentCourses, switchRole,
       moodleToken, moodleUserId, courses, selectedCourse,
       courseMaterials, useMock,
-      zonaSession, zonaStudent, zonaProfile, zonaLoading,
+      zonaSession, zonaStudent, zonaProfile, zonaLoading, zonaHasDualRole, zonaActiveRole,
       googleAccessToken, googleRefreshToken,
       setSelectedCourse, loginWithGoogle, setGoogleTokens, connectMoodle,
       loadCourseMaterials, loadZonaProfile, logout, setRoleOverride,
