@@ -46,11 +46,43 @@ export async function getUserCourses(token, userId) {
 
 /**
  * Get course categories (to map category IDs to names like "Facultad de Odontología")
+ * Tries multiple strategies since not all Moodle functions may be available
  */
-export async function getCategories(token) {
+export async function getCategoryNames(token, courseIds) {
+  const catMap = {};
+
+  // Strategy 1: core_course_get_courses_by_field (usually available, returns categoryname)
   try {
-    return await moodleCall(token, "core_course_get_categories", {});
-  } catch { return []; }
+    const result = await moodleCall(token, "core_course_get_courses_by_field", {
+      field: "ids",
+      value: courseIds.join(","),
+    });
+    const courses = result?.courses || result || [];
+    if (Array.isArray(courses)) {
+      courses.forEach(c => {
+        if (c.id && c.categoryname) catMap[c.id] = c.categoryname;
+      });
+    }
+    if (Object.keys(catMap).length > 0) return catMap;
+  } catch (e) {
+    console.warn("[Studium] core_course_get_courses_by_field failed:", e.message);
+  }
+
+  // Strategy 2: core_course_get_categories (fallback)
+  try {
+    const categories = await moodleCall(token, "core_course_get_categories", {});
+    if (Array.isArray(categories)) {
+      // Build parent lookup for traversing up to faculty level
+      const catLookup = {};
+      categories.forEach(cat => { catLookup[cat.id] = cat; });
+      // Return all category names by ID
+      categories.forEach(cat => { catMap[cat.id] = cat.name; });
+    }
+  } catch (e) {
+    console.warn("[Studium] core_course_get_categories failed:", e.message);
+  }
+
+  return catMap;
 }
 
 /**

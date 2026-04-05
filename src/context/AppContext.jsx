@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
-import { getMoodleToken, getSiteInfo, getUserCourses, getCategories, getCourseContents, assignCourseColor, parseCourseContents, detectUserRole } from "../services/moodle";
+import { getMoodleToken, getSiteInfo, getUserCourses, getCategoryNames, getCourseContents, assignCourseColor, parseCourseContents, detectUserRole } from "../services/moodle";
 import { zonaLogin, zonaGetProfile, zonaSwitchRole } from "../services/zona";
 import { refreshToken } from "../services/google";
 
@@ -139,12 +139,9 @@ export function AppProvider({ children }) {
       detectedUserId = siteInfo.userid;
       setMoodleUserId(siteInfo.userid);
       const rawCourses = await getUserCourses(token, siteInfo.userid);
-      // Fetch category names (Moodle only gives categoryid in courses)
-      const categories = await getCategories(token);
-      const catMap = {};
-      if (Array.isArray(categories)) {
-        categories.forEach(cat => { catMap[cat.id] = cat.name; });
-      }
+      // Fetch category names (Moodle only gives category ID in courses)
+      const courseIds = rawCourses.map(c => c.id);
+      const catMap = await getCategoryNames(token, courseIds);
       const currentYear = new Date().getFullYear().toString(); // "2026"
       const enriched = rawCourses
         .filter(c => c.visible !== 0)
@@ -163,7 +160,7 @@ export function AppProvider({ children }) {
             id: c.id,
             fullname: cleanName.trim() || c.fullname,
             shortname: c.shortname || c.fullname.substring(0, 3).toUpperCase(),
-            category: catMap[c.category] || c.categoryname || "",
+            category: catMap[c.id] || catMap[c.category] || c.categoryname || "",
             progress: c.progress ?? 0,
             materials: 0, color: assignCourseColor(i), _raw: c,
           };
