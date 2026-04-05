@@ -73,15 +73,17 @@ export async function zonaLiquidacion(session, idPeriodo, idPersona) {
 
 /**
  * Scrape a specific Zona page (raw HTML).
- * page: one of: inicio, analitico, planEstudios, cursadasActuales, 
- *               cursadasAnteriores, inscripcionFinales, datosAlumno,
- *               boletas, constancias, calendario, cursadasInscripcion
+ * Supports GET (default) and POST (for form submissions like select changes).
+ * page: page key or raw base64
+ * params: URL query parameters
+ * method: "GET" (default) or "POST"
+ * postData: form data object for POST requests
  */
-export async function zonaScrape(session, page, params = {}) {
+export async function zonaScrape(session, page, params = {}, method = null, postData = null) {
   const res = await fetch(`${API_BASE}/api/zona/scrape`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session, page, params }),
+    body: JSON.stringify({ session, page, params, method, postData }),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error);

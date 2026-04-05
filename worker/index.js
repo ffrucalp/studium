@@ -1325,13 +1325,23 @@ async function zonaSwitchRole(body, env) {
 }
 
 async function zonaScrape(body, env) {
-  const { session, page, params } = body;
+  const { session, page, params, method, postData } = body;
   if (!session) return json({ error: "Falta la sesión" }, 400, env);
   const pageKey = ZONA_PAGES[page];
   try {
     let url = `${ZONA_URL}/index.php?m=${pageKey || page}`;
     if (params) for (const [k, v] of Object.entries(params)) url += `&${k}=${encodeURIComponent(v)}`;
-    const resp = await fetch(url, { headers: { "Cookie": session } });
+
+    let fetchOpts = { headers: { "Cookie": session }, redirect: "follow" };
+
+    // Support POST requests (e.g. form submissions like cátedra select)
+    if (method === "POST" && postData) {
+      fetchOpts.method = "POST";
+      fetchOpts.headers["Content-Type"] = "application/x-www-form-urlencoded";
+      fetchOpts.body = new URLSearchParams(postData).toString();
+    }
+
+    const resp = await fetch(url, fetchOpts);
     return json({ html: await readZonaText(resp), url }, 200, env);
   } catch (err) { return json({ error: err.message }, 500, env); }
 }

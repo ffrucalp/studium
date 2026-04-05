@@ -49,12 +49,12 @@ const studentStudyNav = [
 // Teacher management section (replaces "Mi Estudio")
 const teacherMgmtNav = [
   { id: "students", label: "Alumnos", Icon: Users },
+  { id: "asistencia", label: "Asistencia", Icon: ClipboardCheck },
   { id: "grading", label: "Calificaciones", Icon: ClipboardList },
   { id: "submissions", label: "Entregas", Icon: FileCheck },
   { id: "announcements", label: "Anuncios", Icon: Megaphone },
   { id: "coursestats", label: "Estadísticas", Icon: BarChart3 },
   { id: "finales", label: "Finales", Icon: CalendarCheck },
-  { id: "asistencia", label: "Asistencia", Icon: ClipboardCheck },
   { id: "liquidacion", label: "Liquidación", Icon: ScrollText },
   { id: "salary", label: "Cálculo Salarial", Icon: DollarSign },
 ];
