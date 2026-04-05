@@ -13,42 +13,16 @@ function parseAsistenciasPage(html) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
-  // ── Extract select options (cátedras) ──
   const catedras = [];
-  let selectName = "";
-  const selects = doc.querySelectorAll("select");
-  selects.forEach(select => {
-    const name = select.getAttribute("name") || "";
+  doc.querySelectorAll("select").forEach(select => {
     select.querySelectorAll("option").forEach(opt => {
       const val = opt.value;
       if (val && val !== "0" && val !== "") {
         catedras.push({ id: val, nombre: opt.textContent.trim(), selected: opt.hasAttribute("selected") });
       }
     });
-    if (catedras.length > 0 && !selectName) selectName = name;
   });
 
-  // ── Extract ALL form fields (hidden inputs, etc.) ──
-  const formData = {};
-  const forms = doc.querySelectorAll("form");
-  forms.forEach(form => {
-    // Get all inputs
-    form.querySelectorAll("input").forEach(input => {
-      const name = input.getAttribute("name");
-      const value = input.getAttribute("value") || "";
-      if (name) formData[name] = value;
-    });
-    // Get select values
-    form.querySelectorAll("select").forEach(select => {
-      const name = select.getAttribute("name");
-      if (name) {
-        const selected = select.querySelector("option[selected]");
-        formData[name] = selected ? selected.value : "";
-      }
-    });
-  });
-
-  // ── Parse planillas table ──
   const planillas = [];
   doc.querySelectorAll("table").forEach(table => {
     const rows = table.querySelectorAll("tr");
@@ -75,7 +49,7 @@ function parseAsistenciasPage(html) {
     }
   });
 
-  return { catedras, planillas, selectName, formData };
+  return { catedras, planillas };
 }
 
 function parseAlumnos(html) {
@@ -115,8 +89,6 @@ function getAsistenciaColor(pct) {
 export default function AsistenciaPage() {
   const { zonaSession } = useApp();
   const [catedras, setCatedras] = useState([]);
-  const [selectName, setSelectName] = useState("");
-  const [formData, setFormData] = useState({});
   const [selectedCatedra, setSelectedCatedra] = useState(null);
   const [planillas, setPlanillas] = useState([]);
   const [selectedPlanilla, setSelectedPlanilla] = useState(null);
@@ -135,8 +107,6 @@ export default function AsistenciaPage() {
       const result = parseAsistenciasPage(data.html);
       setCatedras(result.catedras);
       setPlanillas(result.planillas);
-      setSelectName(result.selectName);
-      setFormData(result.formData);
       const sel = result.catedras.find(c => c.selected) || result.catedras[0];
       if (sel) setSelectedCatedra(sel.id);
     } catch (err) { setError(err.message || "Error al obtener asistencias"); }
@@ -145,6 +115,7 @@ export default function AsistenciaPage() {
 
   useEffect(() => { fetchInitial(); }, [fetchInitial]);
 
+  // ── KEY FIX: Zona uses GET with ?filtro=CATEDRA_ID ──
   const handleCatedraChange = useCallback(async (catedraId) => {
     setSelectedCatedra(catedraId);
     setSelectedPlanilla(null);
@@ -152,16 +123,12 @@ export default function AsistenciaPage() {
     setPlanillas([]);
     setLoadingPlanillas(true);
     try {
-      // Submit the full form with ALL fields, changing only the select value
-      const fullPostData = { ...formData, [selectName]: catedraId };
-      const data = await zonaScrape(zonaSession, "cHJvZl9hc2lzdGVuY2lhcw==", {}, "POST", fullPostData);
+      const data = await zonaScrape(zonaSession, "cHJvZl9hc2lzdGVuY2lhcw==", { filtro: catedraId });
       const result = parseAsistenciasPage(data.html);
       setPlanillas(result.planillas);
-      // Update form data from new page (hidden fields might change)
-      setFormData(result.formData);
     } catch (err) { console.warn("Error loading planillas:", err); }
     finally { setLoadingPlanillas(false); }
-  }, [zonaSession, selectName, formData]);
+  }, [zonaSession]);
 
   const handleVerPlanilla = useCallback(async (planilla) => {
     setSelectedPlanilla(planilla);
