@@ -187,6 +187,37 @@ export async function getAssignments(token, courseIds) {
   } catch { return null; }
 }
 
+/**
+ * Get assignment submissions (TEACHER ONLY)
+ */
+export async function getAssignmentSubmissions(token, assignId) {
+  try {
+    return await moodleCall(token, "mod_assign_get_submissions", {
+      "assignmentids[0]": assignId,
+    });
+  } catch { return null; }
+}
+
+/**
+ * Grade a submission (TEACHER ONLY)
+ */
+export async function gradeSubmission(token, assignId, userId, grade, comment = "") {
+  try {
+    return await moodleCall(token, "mod_assign_save_grade", {
+      assignmentid: assignId,
+      userid: userId,
+      grade: grade,
+      attemptnumber: -1,
+      addattempt: 0,
+      workflowstate: "graded",
+      "plugindata[assignfeedbackcomments_editor][text]": comment,
+      "plugindata[assignfeedbackcomments_editor][format]": 1,
+    });
+  } catch (e) {
+    throw new Error(e.message || "No se pudo calificar");
+  }
+}
+
 // ─── Calendar & Upcoming Events ──────────────────────────────────
 
 /**
@@ -362,6 +393,96 @@ export async function getEnrolledUsers(token, courseId) {
       courseid: courseId,
     });
   } catch { return null; }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ROLE DETECTION
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Moodle role IDs (standard):
+ *   1 = manager
+ *   3 = editingteacher
+ *   4 = teacher (non-editing)
+ *   5 = student
+ * 
+ * We check the user's role in their enrolled courses.
+ * If they have role 3 or 4 in ANY course → "teacher"
+ * Otherwise → "student"
+ */
+
+const TEACHER_ROLE_IDS = [1, 3, 4]; // manager, editingteacher, teacher
+
+/**
+ * Detect user role by checking enrolled users in the first available course.
+ * Returns "teacher" or "student".
+ * 
+ * Strategy:
+ *  1. Try core_enrol_get_enrolled_users on each course until we find the user
+ *  2. Check their roles array for teacher role IDs
+ *  3. Also check role shortnames as fallback (editingteacher, teacher, manager)
+ */
+export async function detectUserRole(token, userId, courses) {
+  if (!courses || courses.length === 0) return "student";
+
+  // Check up to 3 courses to find user's role (usually first one is enough)
+  for (const course of courses.slice(0, 3)) {
+    try {
+      const enrolled = await getEnrolledUsers(token, course.id);
+      if (!enrolled || !Array.isArray(enrolled)) continue;
+
+      const me = enrolled.find(u => u.id === userId);
+      if (!me || !me.roles) continue;
+
+      const isTeacher = me.roles.some(r =>
+        TEACHER_ROLE_IDS.includes(r.roleid) ||
+        ["editingteacher", "teacher", "manager", "coursecreator"].includes(r.shortname)
+      );
+
+      if (isTeacher) return "teacher";
+
+      // Found user but they're a student in this course
+      return "student";
+    } catch (err) {
+      console.warn(`Role detection failed for course ${course.id}:`, err.message);
+      continue;
+    }
+  }
+
+  // Default to student if we couldn't determine
+  return "student";
+}
+
+/**
+ * Get all grades for all students in a course (TEACHER ONLY)
+ * Uses gradereport_user_get_grade_items for each student
+ */
+export async function getCourseGrades(token, courseId) {
+  try {
+    return await moodleCall(token, "gradereport_user_get_grade_items", {
+      courseid: courseId,
+    });
+  } catch { return null; }
+}
+
+/**
+ * Get course participants count and basic stats
+ */
+export async function getCourseParticipants(token, courseId) {
+  try {
+    const users = await getEnrolledUsers(token, courseId);
+    if (!users || !Array.isArray(users)) return { total: 0, students: [], teachers: [] };
+
+    const students = users.filter(u =>
+      u.roles?.some(r => r.shortname === "student" || r.roleid === 5)
+    );
+    const teachers = users.filter(u =>
+      u.roles?.some(r => TEACHER_ROLE_IDS.includes(r.roleid) ||
+        ["editingteacher", "teacher", "manager"].includes(r.shortname))
+    );
+
+    return { total: users.length, students, teachers };
+  } catch { return { total: 0, students: [], teachers: [] }; }
 }
 
 /**

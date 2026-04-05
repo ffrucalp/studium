@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
-import { getMoodleToken, getSiteInfo, getUserCourses, getCourseContents, assignCourseColor, parseCourseContents } from "../services/moodle";
+import { getMoodleToken, getSiteInfo, getUserCourses, getCourseContents, assignCourseColor, parseCourseContents, detectUserRole } from "../services/moodle";
 import { zonaLogin, zonaGetProfile } from "../services/zona";
 import { refreshToken } from "../services/google";
 
@@ -48,6 +48,8 @@ export function AppProvider({ children }) {
   const saved = useRef(loadSession()).current;
 
   const [user, setUser] = useState(saved?.user || null);
+  const [userRole, setUserRole] = useState(saved?.userRole || null); // "teacher" | "student" | null
+  const [roleLoading, setRoleLoading] = useState(false);
   const [moodleToken, setMoodleToken] = useState(saved?.moodleToken || null);
   const [moodleUserId, setMoodleUserId] = useState(saved?.moodleUserId || null);
   const [courses, setCourses] = useState(saved?.courses || []);
@@ -83,11 +85,11 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!user) return;
     saveSession({
-      user, moodleToken, moodleUserId, courses, useMock,
+      user, userRole, moodleToken, moodleUserId, courses, useMock,
       zonaSession, zonaStudent,
       googleAccessToken, googleRefreshToken,
     });
-  }, [user, moodleToken, moodleUserId, courses, useMock, zonaSession, zonaStudent, googleAccessToken, googleRefreshToken]);
+  }, [user, userRole, moodleToken, moodleUserId, courses, useMock, zonaSession, zonaStudent, googleAccessToken, googleRefreshToken]);
 
   // ── Auto-refresh Google token on restore ──
   useEffect(() => {
@@ -102,8 +104,8 @@ export function AppProvider({ children }) {
   // ── Google OAuth Login ──
   const loginWithGoogle = useCallback((userData) => {
     setUser({
-      name: userData?.name || "Estudiante UCALP",
-      email: userData?.email || "alumno@ucalpvirtual.edu.ar",
+      name: userData?.name || "Usuario UCALP",
+      email: userData?.email || "usuario@ucalpvirtual.edu.ar",
       picture: userData?.picture || null,
       given_name: userData?.given_name || null,
     });
@@ -120,10 +122,16 @@ export function AppProvider({ children }) {
     const results = { moodle: false, zona: false };
 
     // Try Moodle
+    let detectedCourses = [];
+    let detectedToken = null;
+    let detectedUserId = null;
+
     try {
       const token = await getMoodleToken(username, password);
+      detectedToken = token;
       setMoodleToken(token);
       const siteInfo = await getSiteInfo(token);
+      detectedUserId = siteInfo.userid;
       setMoodleUserId(siteInfo.userid);
       const rawCourses = await getUserCourses(token, siteInfo.userid);
       const currentYear = new Date().getFullYear().toString(); // "2026"
@@ -149,6 +157,7 @@ export function AppProvider({ children }) {
             materials: 0, color: assignCourseColor(i), _raw: c,
           };
         });
+      detectedCourses = enriched;
       setCourses(enriched);
       setUseMock(false);
       results.moodle = true;
@@ -156,8 +165,27 @@ export function AppProvider({ children }) {
       console.warn("Moodle fallback to mock:", err.message);
       setMoodleToken("mock_token");
       setCourses(MOCK_COURSES);
+      detectedCourses = MOCK_COURSES;
       setUseMock(true);
       results.moodle = true; // mock fallback
+    }
+
+    // ── Detect user role ──
+    if (detectedToken && detectedToken !== "mock_token" && detectedUserId && detectedCourses.length > 0) {
+      setRoleLoading(true);
+      try {
+        const role = await detectUserRole(detectedToken, detectedUserId, detectedCourses);
+        setUserRole(role);
+        console.log(`[Studium] Rol detectado: ${role}`);
+      } catch (err) {
+        console.warn("Role detection failed, defaulting to student:", err.message);
+        setUserRole("student");
+      } finally {
+        setRoleLoading(false);
+      }
+    } else {
+      // Mock mode → default to student (can be toggled in settings)
+      setUserRole("student");
     }
 
     // Try Zona Interactiva (same credentials: DNI + password)
@@ -185,6 +213,16 @@ export function AppProvider({ children }) {
 
     return results;
   }, []);
+
+  // ── Manual role override (for testing / settings) ──
+  const setRoleOverride = useCallback((role) => {
+    if (role === "teacher" || role === "student") {
+      setUserRole(role);
+    }
+  }, []);
+
+  // ── Helper: is teacher? ──
+  const isTeacher = userRole === "teacher";
 
   // ── Load Zona academic profile ──
   const loadZonaProfile = useCallback(async (idCliente = null) => {
@@ -226,6 +264,7 @@ export function AppProvider({ children }) {
   // ── Logout ──
   const logout = useCallback(() => {
     setUser(null);
+    setUserRole(null);
     setMoodleToken(null);
     setMoodleUserId(null);
     setCourses([]);
@@ -243,12 +282,13 @@ export function AppProvider({ children }) {
 
   return (
     <AppContext.Provider value={{
-      user, moodleToken, moodleUserId, courses, selectedCourse,
+      user, userRole, isTeacher, roleLoading,
+      moodleToken, moodleUserId, courses, selectedCourse,
       courseMaterials, useMock,
       zonaSession, zonaStudent, zonaProfile, zonaLoading,
       googleAccessToken, googleRefreshToken,
       setSelectedCourse, loginWithGoogle, setGoogleTokens, connectMoodle,
-      loadCourseMaterials, loadZonaProfile, logout,
+      loadCourseMaterials, loadZonaProfile, logout, setRoleOverride,
     }}>
       {children}
     </AppContext.Provider>

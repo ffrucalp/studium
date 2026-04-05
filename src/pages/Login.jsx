@@ -26,6 +26,9 @@ export default function Login({ onMockLogin }) {
             Plataforma académica inteligente<br />
             <span style={{ fontWeight: 600, color: P.red }}>Universidad Católica de La Plata</span>
           </p>
+          <p style={{ color: P.textMuted, fontSize: 12, marginTop: 8, lineHeight: 1.5 }}>
+            Acceso para docentes y alumnos
+          </p>
         </div>
 
         <button onClick={handleLogin}
@@ -37,7 +40,9 @@ export default function Login({ onMockLogin }) {
         </button>
 
         <p style={{ color: P.textMuted, fontSize: 12, marginTop: 20 }}>
-          {CONFIG.GOOGLE_CLIENT_ID ? "Se conectará con tu cuenta Google institucional" : "Exclusivo para alumnos con mail institucional (modo demo)"}
+          {CONFIG.GOOGLE_CLIENT_ID
+            ? "Tu rol (docente o alumno) se detecta automáticamente desde Moodle"
+            : "Modo demo — se conectará como alumno de ejemplo"}
         </p>
       </div>
     </div>

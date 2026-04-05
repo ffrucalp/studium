@@ -23,9 +23,15 @@ import FlashcardsPage from "./pages/Flashcards";
 import ConceptMapPage from "./pages/ConceptMap";
 import TPCorrectorPage from "./pages/TPCorrector";
 import ClassmatesPage from "./pages/Classmates";
+// ── Teacher pages ──
+import StudentListPage from "./pages/StudentList";
+import GradingPage from "./pages/Grading";
+import SubmissionsPage from "./pages/Submissions";
+import AnnouncementsPage from "./pages/Announcements";
+import CourseStatsPage from "./pages/CourseStats";
 
 export default function App() {
-  const { user, moodleToken, courses, selectedCourse, setSelectedCourse, loginWithGoogle, setGoogleTokens } = useApp();
+  const { user, moodleToken, courses, selectedCourse, setSelectedCourse, loginWithGoogle, setGoogleTokens, isTeacher } = useApp();
   const [screen, setScreen] = useState(() => {
     try { return localStorage.getItem("studium_screen") || "dashboard"; } catch { return "dashboard"; }
   });
@@ -98,7 +104,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <Login onMockLogin={() => loginWithGoogle({ name: "Estudiante UCALP", email: "alumno@ucalpvirtual.edu.ar" })} />;
+    return <Login onMockLogin={() => loginWithGoogle({ name: "Usuario UCALP", email: "usuario@ucalpvirtual.edu.ar" })} />;
   }
 
   if (!moodleToken) return <MoodleConnect onConnected={() => setScreen("dashboard")} />;
@@ -141,18 +147,28 @@ export default function App() {
       case "courses": return <CoursesPage onSelectCourse={selectCourse} />;
       case "messages": return <MessagesPage />;
       case "livechat": return <LiveChatPage />;
-      case "quizzes": return <QuizzesPage />;
-      case "flashcards": return <FlashcardsPage />;
-      case "conceptmap": return <ConceptMapPage />;
-      case "corrector": return <TPCorrectorPage />;
-      case "classmates": return <ClassmatesPage />;
-      case "career": return <Career />;
+      case "planner": return <Planner />;
       case "library": return <LibraryPage />;
       case "wolfram": return <WolframPage />;
       case "scan": return <ScanNotesPage />;
-      case "planner": return <Planner />;
-      case "quiz": return <Quiz initialCourse={quizCourse} />;
       case "settings": return <SettingsPage />;
+
+      // ── Student-only screens ──
+      case "career": return !isTeacher ? <Career /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "quizzes": return !isTeacher ? <QuizzesPage /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "flashcards": return !isTeacher ? <FlashcardsPage /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "conceptmap": return !isTeacher ? <ConceptMapPage /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "corrector": return !isTeacher ? <TPCorrectorPage /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "classmates": return !isTeacher ? <ClassmatesPage /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "quiz": return !isTeacher ? <Quiz initialCourse={quizCourse} /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+
+      // ── Teacher-only screens ──
+      case "students": return isTeacher ? <StudentListPage onSelectCourse={selectCourse} /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "grading": return isTeacher ? <GradingPage onSelectCourse={selectCourse} /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "submissions": return isTeacher ? <SubmissionsPage onSelectCourse={selectCourse} /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "announcements": return isTeacher ? <AnnouncementsPage onSelectCourse={selectCourse} /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+      case "coursestats": return isTeacher ? <CourseStatsPage onSelectCourse={selectCourse} /> : <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
+
       default: return <Dashboard onNavigate={navigate} onSelectCourse={selectCourse} />;
     }
   };

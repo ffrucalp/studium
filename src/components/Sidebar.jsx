@@ -6,18 +6,37 @@ import {
   GraduationCap, BookOpen, ChevronLeft, ChevronDown, ChevronRight as ChevronR,
   Menu, Library, Calculator, Camera, MessageCircle, Radio, Users,
   Sun, Moon, Layers, FlaskConical, GitBranch, FileCheck,
+  ClipboardList, BarChart3, Megaphone, UserCheck, PenTool,
+  Shield,
 } from "lucide-react";
 
-const mainNav = [
+// ═══════════════════════════════════════════════════════════════════
+// ROLE-BASED NAVIGATION
+// ═══════════════════════════════════════════════════════════════════
+
+// Shared pages (both roles)
+const sharedMainNav = [
   { id: "dashboard", label: "Inicio", Icon: Home },
   { id: "courses", label: "Mis Materias", Icon: GraduationCap },
-  { id: "career", label: "Mi Carrera", Icon: BookOpen },
-  { id: "chat", label: "Tutor IA", Icon: Sparkles },
+  { id: "chat", label: "Asistente IA", Icon: Sparkles },
   { id: "planner", label: "Planificador", Icon: Calendar },
   { id: "library", label: "Biblioteca", Icon: Library },
 ];
 
-const studyNav = [
+// Student-only main nav items
+const studentMainNav = [
+  ...sharedMainNav.slice(0, 2), // dashboard, courses
+  { id: "career", label: "Mi Carrera", Icon: BookOpen },
+  ...sharedMainNav.slice(2), // chat, planner, library
+];
+
+// Teacher-only main nav items
+const teacherMainNav = [
+  ...sharedMainNav,
+];
+
+// Student study section
+const studentStudyNav = [
   { id: "wolfram", label: "Calculadora", Icon: Calculator },
   { id: "scan", label: "Digitalizar", Icon: Camera },
   { id: "quizzes", label: "Cuestionarios", Icon: HelpCircle },
@@ -27,10 +46,33 @@ const studyNav = [
   { id: "quiz", label: "Práctica", Icon: FlaskConical },
 ];
 
-const bottomNav = [
+// Teacher management section (replaces "Mi Estudio")
+const teacherMgmtNav = [
+  { id: "students", label: "Alumnos", Icon: Users },
+  { id: "grading", label: "Calificaciones", Icon: ClipboardList },
+  { id: "submissions", label: "Entregas", Icon: FileCheck },
+  { id: "announcements", label: "Anuncios", Icon: Megaphone },
+  { id: "coursestats", label: "Estadísticas", Icon: BarChart3 },
+];
+
+// Teacher tools section
+const teacherToolsNav = [
+  { id: "scan", label: "Digitalizar", Icon: Camera },
+  { id: "wolfram", label: "Calculadora", Icon: Calculator },
+];
+
+// Student bottom nav
+const studentBottomNav = [
   { id: "messages", label: "Mensajes", Icon: MessageCircle },
   { id: "livechat", label: "Chat en vivo", Icon: Radio },
   { id: "classmates", label: "Compañeros", Icon: Users },
+  { id: "settings", label: "Ajustes", Icon: Settings },
+];
+
+// Teacher bottom nav
+const teacherBottomNav = [
+  { id: "messages", label: "Mensajes", Icon: MessageCircle },
+  { id: "livechat", label: "Chat en vivo", Icon: Radio },
   { id: "settings", label: "Ajustes", Icon: Settings },
 ];
 
@@ -57,14 +99,23 @@ function NavButton({ item, active, open, onNavigate }) {
 
 export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark, mobileOpen }) {
   const [open, setOpen] = useState(true);
-  const [studyOpen, setStudyOpen] = useState(() => {
-    // Auto-open if current screen is a study item
-    return studyNav.some(i => i.id === currentScreen);
-  });
-  const { user } = useApp();
+  const { user, isTeacher, userRole } = useApp();
 
-  // Keep study section open if a study item is active
-  const studyActive = studyNav.some(i => i.id === currentScreen);
+  // Pick nav items based on role
+  const mainNav = isTeacher ? teacherMainNav : studentMainNav;
+  const sectionNav = isTeacher ? teacherMgmtNav : studentStudyNav;
+  const sectionLabel = isTeacher ? "Gestión" : "Mi Estudio";
+  const toolsNav = isTeacher ? teacherToolsNav : [];
+  const bottomNav = isTeacher ? teacherBottomNav : studentBottomNav;
+
+  const [sectionOpen, setSectionOpen] = useState(() => {
+    return sectionNav.some(i => i.id === currentScreen);
+  });
+  const [toolsOpen, setToolsOpen] = useState(false);
+
+  // Keep section open if an item within it is active
+  const sectionActive = sectionNav.some(i => i.id === currentScreen);
+  const toolsActive = toolsNav.some(i => i.id === currentScreen);
 
   return (
     <aside
@@ -102,6 +153,20 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
         )}
       </div>
 
+      {/* Role badge */}
+      {open && userRole && (
+        <div style={{
+          margin: "8px 14px 2px", padding: "5px 10px", borderRadius: 6,
+          background: isTeacher ? "rgba(46,134,193,0.2)" : "rgba(255,255,255,0.06)",
+          display: "flex", alignItems: "center", gap: 6,
+          fontSize: 11, fontWeight: 600, color: isTeacher ? "#5DADE2" : "rgba(255,255,255,0.5)",
+          textTransform: "uppercase", letterSpacing: 0.8,
+        }}>
+          {isTeacher ? <Shield size={12} /> : <GraduationCap size={12} />}
+          {isTeacher ? "Docente" : "Alumno"}
+        </div>
+      )}
+
       {/* Navigation */}
       <nav style={{ flex: 1, padding: "10px 10px", display: "flex", flexDirection: "column", gap: 1, overflow: "auto" }}>
         {/* Main nav */}
@@ -109,35 +174,65 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
           <NavButton key={item.id} item={item} active={currentScreen === item.id} open={open} onNavigate={onNavigate} />
         ))}
 
-        {/* ── Mi Estudio section ── */}
+        {/* ── Section (Gestión / Mi Estudio) ── */}
         <div style={{ marginTop: 8 }}>
           {open ? (
-            <button onClick={() => setStudyOpen(prev => !prev)}
+            <button onClick={() => setSectionOpen(prev => !prev)}
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 10,
                 padding: "8px 14px", borderRadius: 8, transition: "all 0.15s",
                 background: "transparent", border: "none",
-                color: studyActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
+                color: sectionActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
                 fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1,
                 cursor: "pointer",
               }}
               onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
-              onMouseLeave={e => e.currentTarget.style.color = studyActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}>
-              {(studyOpen || studyActive) ? <ChevronDown size={13} /> : <ChevronR size={13} />}
-              Mi Estudio
+              onMouseLeave={e => e.currentTarget.style.color = sectionActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}>
+              {(sectionOpen || sectionActive) ? <ChevronDown size={13} /> : <ChevronR size={13} />}
+              {sectionLabel}
             </button>
           ) : (
             <div style={{ width: "100%", height: 1, background: "rgba(255,255,255,0.08)", margin: "6px 0" }} />
           )}
 
-          {(studyOpen || studyActive || !open) && (
+          {(sectionOpen || sectionActive || !open) && (
             <div style={{ paddingLeft: open ? 6 : 0 }}>
-              {studyNav.map(item => (
+              {sectionNav.map(item => (
                 <NavButton key={item.id} item={item} active={currentScreen === item.id} open={open} onNavigate={onNavigate} />
               ))}
             </div>
           )}
         </div>
+
+        {/* ── Teacher Tools section (only for teachers) ── */}
+        {isTeacher && toolsNav.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            {open ? (
+              <button onClick={() => setToolsOpen(prev => !prev)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 10,
+                  padding: "8px 14px", borderRadius: 8, transition: "all 0.15s",
+                  background: "transparent", border: "none",
+                  color: toolsActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
+                  fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1,
+                  cursor: "pointer",
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
+                onMouseLeave={e => e.currentTarget.style.color = toolsActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}>
+                {(toolsOpen || toolsActive) ? <ChevronDown size={13} /> : <ChevronR size={13} />}
+                Herramientas
+              </button>
+            ) : null}
+
+            {(toolsOpen || toolsActive || !open) && (
+              <div style={{ paddingLeft: open ? 6 : 0 }}>
+                {toolsNav.map(item => (
+                  <NavButton key={item.id} item={item} active={currentScreen === item.id} open={open} onNavigate={onNavigate} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Separator ── */}
         {open ? (
@@ -172,7 +267,7 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
             <img src={user.picture} alt="" style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, objectFit: "cover" }} referrerPolicy="no-referrer" />
           ) : (
             <div style={{ width: 34, height: 34, borderRadius: 9, background: P.red, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-              {user?.name?.charAt(0) || "E"}
+              {user?.name?.charAt(0) || "U"}
             </div>
           )}
           {open && (
