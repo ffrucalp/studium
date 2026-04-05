@@ -223,7 +223,7 @@ export default function Library() {
       {/* Banners */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
         {[
-          { href: ELIBRO_HOME, icon: BookMarked, title: "eLibro UCALP", sub: "Textos completos", bg: `linear-gradient(135deg,${P.sidebar},${P.redDark})` },
+          { href: ELIBRO_HOME, icon: BookMarked, title: "eLibro UCALP", sub: "Textos completos", bg: "linear-gradient(135deg,#C0392B,#E74C3C)" },
           { href: "https://biblio.ucalp.edu.ar/", icon: Building2, title: "Catálogo UCALP", sub: "Biblioteca física", bg: "linear-gradient(135deg,#1a365d,#2c5282)" },
           { href: "https://www.semanticscholar.org/", icon: GraduationCap, title: "Semantic Scholar", sub: "200M+ papers", bg: "linear-gradient(135deg,#1e3a5f,#2563eb)" },
           { href: "https://openalex.org/", icon: BookOpen, title: "OpenAlex", sub: "250M+ trabajos", bg: "linear-gradient(135deg,#7c2d12,#e16b31)" },
