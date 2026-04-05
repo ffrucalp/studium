@@ -45,6 +45,15 @@ export async function getUserCourses(token, userId) {
 }
 
 /**
+ * Get course categories (to map category IDs to names like "Facultad de Odontología")
+ */
+export async function getCategories(token) {
+  try {
+    return await moodleCall(token, "core_course_get_categories", {});
+  } catch { return []; }
+}
+
+/**
  * Get course contents (sections, modules, resources)
  */
 export async function getCourseContents(token, courseId) {
