@@ -243,14 +243,14 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
               }}
               onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
               onMouseLeave={e => e.currentTarget.style.color = sectionActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}>
-              {(sectionOpen || sectionActive) ? <ChevronDown size={13} /> : <ChevronR size={13} />}
+              {sectionOpen ? <ChevronDown size={13} /> : <ChevronR size={13} />}
               {sectionLabel}
             </button>
           ) : (
             <div style={{ width: "100%", height: 1, background: "rgba(255,255,255,0.08)", margin: "6px 0" }} />
           )}
 
-          {(sectionOpen || sectionActive || !open) && (
+          {(sectionOpen || !open) && (
             <div style={{ paddingLeft: open ? 6 : 0 }}>
               {sectionNav.map(item => (
                 <NavButton key={item.id} item={item} active={currentScreen === item.id} open={open} onNavigate={onNavigate} />
@@ -274,12 +274,12 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
                 }}
                 onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.7)"}
                 onMouseLeave={e => e.currentTarget.style.color = toolsActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}>
-                {(toolsOpen || toolsActive) ? <ChevronDown size={13} /> : <ChevronR size={13} />}
+                {toolsOpen ? <ChevronDown size={13} /> : <ChevronR size={13} />}
                 Herramientas
               </button>
             ) : null}
 
-            {(toolsOpen || toolsActive || !open) && (
+            {(toolsOpen || !open) && (
               <div style={{ paddingLeft: open ? 6 : 0 }}>
                 {toolsNav.map(item => (
                   <NavButton key={item.id} item={item} active={currentScreen === item.id} open={open} onNavigate={onNavigate} />
