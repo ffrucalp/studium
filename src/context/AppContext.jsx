@@ -124,11 +124,8 @@ export function AppProvider({ children }) {
     if (data.refresh_token) setGoogleRefreshToken(data.refresh_token);
   }, []);
 
-  // ── Connect both Moodle + Zona with same credentials ──
-  const connectMoodle = useCallback(async (username, password) => {
-    const results = { moodle: false, zona: false };
-
-    // Try Moodle
+  // ── Connect to Moodle only ──
+  const connectMoodleOnly = useCallback(async (username, password) => {
     let detectedCourses = [];
     let detectedToken = null;
     let detectedUserId = null;
@@ -167,14 +164,12 @@ export function AppProvider({ children }) {
       detectedCourses = enriched;
       setCourses(enriched);
       setUseMock(false);
-      results.moodle = true;
     } catch (err) {
       console.warn("Moodle fallback to mock:", err.message);
       setMoodleToken("mock_token");
       setCourses(MOCK_COURSES);
       detectedCourses = MOCK_COURSES;
       setUseMock(true);
-      results.moodle = true; // mock fallback
     }
 
     // ── Detect user role (supports dual roles) ──
@@ -197,13 +192,16 @@ export function AppProvider({ children }) {
         setRoleLoading(false);
       }
     } else {
-      // Mock mode → default to student (can be toggled in settings)
       setUserRole("student");
       setAvailableRoles(["student"]);
       setIsDualRole(false);
     }
 
-    // Try Zona Interactiva (same credentials: DNI + password)
+    return true;
+  }, []);
+
+  // ── Connect to Zona Interactiva only ──
+  const connectZonaOnly = useCallback(async (username, password) => {
     try {
       const zona = await zonaLogin(username, password);
       setZonaSession(zona.session);
@@ -216,14 +214,12 @@ export function AppProvider({ children }) {
         console.log("[Studium] Zona: usuario con doble rol (Alumno + Docente)");
 
         // If Moodle didn't detect dual role but Zona did, upgrade to dual
-        // This covers the case: teacher in Moodle but also student in a diplomatura (only in Zona)
         if (!isDualRole) {
           const currentRoles = [...availableRoles];
           if (!currentRoles.includes("teacher")) currentRoles.push("teacher");
           if (!currentRoles.includes("student")) currentRoles.push("student");
           setAvailableRoles(currentRoles);
           setIsDualRole(true);
-          // Default to teacher for dual-role users
           setUserRole("teacher");
           console.log("[Studium] Dual role detectado via Zona Interactiva → default: docente");
         }
@@ -241,13 +237,35 @@ export function AppProvider({ children }) {
         }));
       }
 
-      results.zona = true;
+      return true;
     } catch (err) {
       console.warn("Zona login failed:", err.message);
+      return false;
     }
+  }, [availableRoles, isDualRole]);
+
+  // ── Disconnect Zona ──
+  const disconnectZona = useCallback(() => {
+    setZonaSession(null);
+    setZonaStudent(null);
+    setZonaHasDualRole(false);
+    setZonaActiveRole(null);
+    setZonaProfile(null);
+  }, []);
+
+  // ── Connect both (same credentials) — backwards compatible ──
+  const connectMoodle = useCallback(async (username, password, zonaUsername, zonaPassword) => {
+    const results = { moodle: false, zona: false };
+    await connectMoodleOnly(username, password);
+    results.moodle = true;
+
+    // Connect Zona: use separate credentials if provided, otherwise same
+    const zUser = zonaUsername || username;
+    const zPass = zonaPassword || password;
+    results.zona = await connectZonaOnly(zUser, zPass);
 
     return results;
-  }, [availableRoles, isDualRole]);
+  }, [connectMoodleOnly, connectZonaOnly]);
 
   // ── Switch role (only for dual-role users) ──
   const switchRole = useCallback(async (role) => {
@@ -362,6 +380,7 @@ export function AppProvider({ children }) {
       zonaSession, zonaStudent, zonaProfile, zonaLoading, zonaHasDualRole, zonaActiveRole,
       googleAccessToken, googleRefreshToken,
       setSelectedCourse, loginWithGoogle, setGoogleTokens, connectMoodle,
+      connectMoodleOnly, connectZonaOnly, disconnectZona,
       loadCourseMaterials, loadZonaProfile, logout, setRoleOverride,
     }}>
       {children}
