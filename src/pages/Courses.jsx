@@ -1,5 +1,6 @@
 import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
+import { getFacultyColor } from "../components/CourseSelector";
 import { FileText, ChevronRight, Search, GraduationCap } from "lucide-react";
 import { useState } from "react";
 
@@ -39,44 +40,47 @@ export default function Courses({ onSelectCourse }) {
 
       {/* Courses grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-        {filtered.map((course, i) => (
-          <div key={course.id} className="slide-in"
-            style={{
-              animationDelay: `${i * 0.06}s`, background: P.card, borderRadius: 16,
-              border: `1px solid ${P.border}`, overflow: "hidden",
-              cursor: "pointer", transition: "all 0.2s",
-            }}
-            onClick={() => onSelectCourse(course)}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 8px 28px rgba(26,82,118,0.06)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
-          >
-            <div style={{ height: 5, background: `linear-gradient(90deg, ${course.color}, ${course.color}88)` }} />
-            <div style={{ padding: "18px 20px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                <div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: course.color, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                    {course.shortname}
+        {filtered.map((course, i) => {
+          const color = getFacultyColor(course.category) || course.color;
+          return (
+            <div key={course.id} className="slide-in"
+              style={{
+                animationDelay: `${i * 0.06}s`, background: P.card, borderRadius: 16,
+                border: `1px solid ${P.border}`, overflow: "hidden",
+                cursor: "pointer", transition: "all 0.2s",
+              }}
+              onClick={() => onSelectCourse(course)}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 8px 28px rgba(26,82,118,0.06)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
+            >
+              <div style={{ height: 5, background: `linear-gradient(90deg, ${color}, ${color}88)` }} />
+              <div style={{ padding: "18px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      {course.category || course.shortname}
+                    </span>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, color: P.text, marginTop: 4, lineHeight: 1.35 }}>
+                      {course.fullname}
+                    </h3>
+                  </div>
+                  <div style={{ color: P.textMuted }}><ChevronRight size={18} /></div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
+                  <div style={{ flex: 1, height: 5, background: P.borderLight, borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ width: `${course.progress}%`, height: "100%", background: `linear-gradient(90deg, ${color}, ${color}bb)`, borderRadius: 3, transition: "width 0.6s ease" }} />
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color }}>{course.progress}%</span>
+                </div>
+                <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+                  <span style={{ fontSize: 12, color: P.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
+                    <FileText size={14} /> {course.materials} recursos
                   </span>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, color: P.text, marginTop: 4, lineHeight: 1.35 }}>
-                    {course.fullname}
-                  </h3>
                 </div>
-                <div style={{ color: P.textMuted }}><ChevronRight size={18} /></div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
-                <div style={{ flex: 1, height: 5, background: P.borderLight, borderRadius: 3, overflow: "hidden" }}>
-                  <div style={{ width: `${course.progress}%`, height: "100%", background: `linear-gradient(90deg, ${course.color}, ${course.color}bb)`, borderRadius: 3, transition: "width 0.6s ease" }} />
-                </div>
-                <span style={{ fontSize: 12, fontWeight: 700, color: course.color }}>{course.progress}%</span>
-              </div>
-              <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-                <span style={{ fontSize: 12, color: P.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
-                  <FileText size={14} /> {course.materials} recursos
-                </span>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {filtered.length === 0 && filter && (

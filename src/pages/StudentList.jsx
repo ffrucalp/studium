@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
+import CourseSelector from "../components/CourseSelector";
 import { getEnrolledUsers } from "../services/moodle";
 import {
   Users, Search, Loader2, Mail, ChevronDown, ChevronRight,
@@ -74,20 +75,7 @@ export default function StudentListPage() {
       </p>
 
       {/* Course selector */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
-        {courses.map(c => (
-          <button key={c.id} onClick={() => setSelectedCourseId(c.id)}
-            style={{
-              padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 500,
-              background: selectedCourseId === c.id ? c.color : P.card,
-              color: selectedCourseId === c.id ? "#fff" : P.textSec,
-              border: `1px solid ${selectedCourseId === c.id ? c.color : P.border}`,
-              cursor: "pointer", transition: "all 0.2s",
-            }}>
-            {c.shortname || c.fullname.substring(0, 15)}
-          </button>
-        ))}
-      </div>
+      <CourseSelector courses={courses} selectedId={selectedCourseId} onSelect={setSelectedCourseId} />
 
       {!selectedCourseId ? (
         <div style={{ background: P.card, borderRadius: 16, padding: "60px 32px", textAlign: "center", border: `1px solid ${P.border}` }}>

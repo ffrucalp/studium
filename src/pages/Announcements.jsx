@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { P, ff } from "../styles/theme";
 import { useApp } from "../context/AppContext";
+import CourseSelector from "../components/CourseSelector";
 import { getForumsByCourse, getForumDiscussions, addForumDiscussion } from "../services/moodle";
 import {
   Megaphone, Loader2, Send, Plus, Clock, ChevronDown, ChevronRight,
@@ -141,20 +142,7 @@ export default function AnnouncementsPage() {
       </div>
 
       {/* Course selector */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
-        {courses.map(c => (
-          <button key={c.id} onClick={() => { setSelectedCourseId(c.id); setShowCompose(false); }}
-            style={{
-              padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 500,
-              background: selectedCourseId === c.id ? c.color : P.card,
-              color: selectedCourseId === c.id ? "#fff" : P.textSec,
-              border: `1px solid ${selectedCourseId === c.id ? c.color : P.border}`,
-              cursor: "pointer", transition: "all 0.2s",
-            }}>
-            {c.shortname || c.fullname.substring(0, 15)}
-          </button>
-        ))}
-      </div>
+      <CourseSelector courses={courses} selectedId={selectedCourseId} onSelect={(id) => { setSelectedCourseId(id); setShowCompose(false); }} />
 
       {/* Success / Error messages */}
       {success && (
