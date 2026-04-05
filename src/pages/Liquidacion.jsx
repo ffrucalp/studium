@@ -89,8 +89,20 @@ export default function LiquidacionPage() {
       const pers = parsePeriodos(data.html);
       setIdPersona(id);
       setPeriodos(pers);
-      // Auto-select last period
-      if (pers.length > 0) setSelectedPeriodo(pers[pers.length - 1].id);
+      // Auto-select the most recent period that's already liquidated (end date < today)
+      if (pers.length > 0) {
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        let best = pers[pers.length - 1]; // fallback: last period
+        for (let i = pers.length - 1; i >= 0; i--) {
+          // Parse end date from text like "09/02/2026 - 15/03/2026"
+          const match = pers[i].texto.match(/(\d{2})\/(\d{2})\/(\d{4})\s*$/);
+          if (match) {
+            const endDate = new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
+            if (endDate < hoy) { best = pers[i]; break; }
+          }
+        }
+        setSelectedPeriodo(best.id);
+      }
     } catch (err) {
       setError(err.message || "Error al obtener períodos");
     } finally { setLoading(false); }
