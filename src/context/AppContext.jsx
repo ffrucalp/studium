@@ -49,6 +49,10 @@ export function AppProvider({ children }) {
 
   const [user, setUser] = useState(saved?.user || null);
   const [userRole, setUserRole] = useState(saved?.userRole || null); // "teacher" | "student" | null
+  const [availableRoles, setAvailableRoles] = useState(saved?.availableRoles || []); // ["teacher", "student"] if dual
+  const [isDualRole, setIsDualRole] = useState(saved?.isDualRole || false);
+  const [teacherCourses, setTeacherCourses] = useState(saved?.teacherCourses || []);
+  const [studentCourses, setStudentCourses] = useState(saved?.studentCourses || []);
   const [roleLoading, setRoleLoading] = useState(false);
   const [moodleToken, setMoodleToken] = useState(saved?.moodleToken || null);
   const [moodleUserId, setMoodleUserId] = useState(saved?.moodleUserId || null);
@@ -85,11 +89,12 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!user) return;
     saveSession({
-      user, userRole, moodleToken, moodleUserId, courses, useMock,
+      user, userRole, availableRoles, isDualRole, teacherCourses, studentCourses,
+      moodleToken, moodleUserId, courses, useMock,
       zonaSession, zonaStudent,
       googleAccessToken, googleRefreshToken,
     });
-  }, [user, userRole, moodleToken, moodleUserId, courses, useMock, zonaSession, zonaStudent, googleAccessToken, googleRefreshToken]);
+  }, [user, userRole, availableRoles, isDualRole, teacherCourses, studentCourses, moodleToken, moodleUserId, courses, useMock, zonaSession, zonaStudent, googleAccessToken, googleRefreshToken]);
 
   // ── Auto-refresh Google token on restore ──
   useEffect(() => {
@@ -170,22 +175,30 @@ export function AppProvider({ children }) {
       results.moodle = true; // mock fallback
     }
 
-    // ── Detect user role ──
+    // ── Detect user role (supports dual roles) ──
     if (detectedToken && detectedToken !== "mock_token" && detectedUserId && detectedCourses.length > 0) {
       setRoleLoading(true);
       try {
-        const role = await detectUserRole(detectedToken, detectedUserId, detectedCourses);
-        setUserRole(role);
-        console.log(`[Studium] Rol detectado: ${role}`);
+        const roleResult = await detectUserRole(detectedToken, detectedUserId, detectedCourses);
+        setAvailableRoles(roleResult.roles);
+        setIsDualRole(roleResult.isDualRole);
+        setTeacherCourses(roleResult.teacherCourses);
+        setStudentCourses(roleResult.studentCourses);
+        setUserRole(roleResult.defaultRole);
+        console.log(`[Studium] Roles detectados: ${roleResult.roles.join(", ")}${roleResult.isDualRole ? " (dual)" : ""}`);
       } catch (err) {
         console.warn("Role detection failed, defaulting to student:", err.message);
         setUserRole("student");
+        setAvailableRoles(["student"]);
+        setIsDualRole(false);
       } finally {
         setRoleLoading(false);
       }
     } else {
       // Mock mode → default to student (can be toggled in settings)
       setUserRole("student");
+      setAvailableRoles(["student"]);
+      setIsDualRole(false);
     }
 
     // Try Zona Interactiva (same credentials: DNI + password)
@@ -214,12 +227,24 @@ export function AppProvider({ children }) {
     return results;
   }, []);
 
+  // ── Switch role (only for dual-role users) ──
+  const switchRole = useCallback((role) => {
+    if (availableRoles.includes(role)) {
+      setUserRole(role);
+      console.log(`[Studium] Rol cambiado a: ${role}`);
+    }
+  }, [availableRoles]);
+
   // ── Manual role override (for testing / settings) ──
   const setRoleOverride = useCallback((role) => {
     if (role === "teacher" || role === "student") {
       setUserRole(role);
+      if (!availableRoles.includes(role)) {
+        setAvailableRoles(prev => [...prev, role]);
+        setIsDualRole(true);
+      }
     }
-  }, []);
+  }, [availableRoles]);
 
   // ── Helper: is teacher? ──
   const isTeacher = userRole === "teacher";
@@ -265,6 +290,10 @@ export function AppProvider({ children }) {
   const logout = useCallback(() => {
     setUser(null);
     setUserRole(null);
+    setAvailableRoles([]);
+    setIsDualRole(false);
+    setTeacherCourses([]);
+    setStudentCourses([]);
     setMoodleToken(null);
     setMoodleUserId(null);
     setCourses([]);
@@ -283,6 +312,7 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       user, userRole, isTeacher, roleLoading,
+      availableRoles, isDualRole, teacherCourses, studentCourses, switchRole,
       moodleToken, moodleUserId, courses, selectedCourse,
       courseMaterials, useMock,
       zonaSession, zonaStudent, zonaProfile, zonaLoading,

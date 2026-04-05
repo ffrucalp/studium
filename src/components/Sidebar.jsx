@@ -99,7 +99,7 @@ function NavButton({ item, active, open, onNavigate }) {
 
 export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark, mobileOpen }) {
   const [open, setOpen] = useState(true);
-  const { user, isTeacher, userRole } = useApp();
+  const { user, isTeacher, userRole, isDualRole, switchRole, teacherCourses, studentCourses } = useApp();
 
   // Pick nav items based on role
   const mainNav = isTeacher ? teacherMainNav : studentMainNav;
@@ -153,18 +153,70 @@ export default function Sidebar({ currentScreen, onNavigate, dark, onToggleDark,
         )}
       </div>
 
-      {/* Role badge */}
+      {/* Role badge / switcher */}
       {open && userRole && (
-        <div style={{
-          margin: "8px 14px 2px", padding: "5px 10px", borderRadius: 6,
-          background: isTeacher ? "rgba(46,134,193,0.2)" : "rgba(255,255,255,0.06)",
-          display: "flex", alignItems: "center", gap: 6,
-          fontSize: 11, fontWeight: 600, color: isTeacher ? "#5DADE2" : "rgba(255,255,255,0.5)",
-          textTransform: "uppercase", letterSpacing: 0.8,
-        }}>
-          {isTeacher ? <Shield size={12} /> : <GraduationCap size={12} />}
-          {isTeacher ? "Docente" : "Alumno"}
-        </div>
+        isDualRole ? (
+          /* ── Dual-role switcher ── */
+          <div style={{
+            margin: "8px 14px 2px", borderRadius: 8,
+            background: "rgba(255,255,255,0.06)", padding: 3,
+            display: "flex", gap: 2,
+          }}>
+            <button
+              onClick={() => { switchRole("teacher"); onNavigate("dashboard"); }}
+              style={{
+                flex: 1, padding: "6px 0", borderRadius: 6, border: "none", cursor: "pointer",
+                fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                transition: "all 0.2s",
+                background: isTeacher ? "rgba(46,134,193,0.3)" : "transparent",
+                color: isTeacher ? "#5DADE2" : "rgba(255,255,255,0.35)",
+              }}
+              title={`Docente en ${teacherCourses.length} materia${teacherCourses.length !== 1 ? "s" : ""}`}>
+              <Shield size={11} /> Docente
+            </button>
+            <button
+              onClick={() => { switchRole("student"); onNavigate("dashboard"); }}
+              style={{
+                flex: 1, padding: "6px 0", borderRadius: 6, border: "none", cursor: "pointer",
+                fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                transition: "all 0.2s",
+                background: !isTeacher ? "rgba(5,150,105,0.25)" : "transparent",
+                color: !isTeacher ? "#34D399" : "rgba(255,255,255,0.35)",
+              }}
+              title={`Alumno en ${studentCourses.length} materia${studentCourses.length !== 1 ? "s" : ""}`}>
+              <GraduationCap size={11} /> Alumno
+            </button>
+          </div>
+        ) : (
+          /* ── Single-role badge ── */
+          <div style={{
+            margin: "8px 14px 2px", padding: "5px 10px", borderRadius: 6,
+            background: isTeacher ? "rgba(46,134,193,0.2)" : "rgba(255,255,255,0.06)",
+            display: "flex", alignItems: "center", gap: 6,
+            fontSize: 11, fontWeight: 600, color: isTeacher ? "#5DADE2" : "rgba(255,255,255,0.5)",
+            textTransform: "uppercase", letterSpacing: 0.8,
+          }}>
+            {isTeacher ? <Shield size={12} /> : <GraduationCap size={12} />}
+            {isTeacher ? "Docente" : "Alumno"}
+          </div>
+        )
+      )}
+      {!open && isDualRole && userRole && (
+        /* ── Collapsed dual-role: small toggle button ── */
+        <button
+          onClick={() => { switchRole(isTeacher ? "student" : "teacher"); onNavigate("dashboard"); }}
+          style={{
+            margin: "6px auto", width: 36, height: 36, borderRadius: 8,
+            background: isTeacher ? "rgba(46,134,193,0.2)" : "rgba(5,150,105,0.2)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            border: "none", cursor: "pointer", transition: "all 0.2s",
+            color: isTeacher ? "#5DADE2" : "#34D399",
+          }}
+          title={`Cambiar a ${isTeacher ? "Alumno" : "Docente"}`}>
+          {isTeacher ? <Shield size={16} /> : <GraduationCap size={16} />}
+        </button>
       )}
 
       {/* Navigation */}

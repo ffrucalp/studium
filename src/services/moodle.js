@@ -412,21 +412,41 @@ export async function getEnrolledUsers(token, courseId) {
  */
 
 const TEACHER_ROLE_IDS = [1, 3, 4]; // manager, editingteacher, teacher
+const TEACHER_SHORTNAMES = ["editingteacher", "teacher", "manager", "coursecreator"];
 
 /**
- * Detect user role by checking enrolled users in the first available course.
- * Returns "teacher" or "student".
+ * Detect ALL roles the user has across their courses.
+ * 
+ * Returns:
+ * {
+ *   roles: ["teacher", "student"] | ["teacher"] | ["student"],
+ *   isDualRole: boolean,
+ *   defaultRole: "teacher" | "student",
+ *   teacherCourses: [{ id, fullname }],  // courses where user is teacher
+ *   studentCourses: [{ id, fullname }],  // courses where user is student
+ * }
  * 
  * Strategy:
- *  1. Try core_enrol_get_enrolled_users on each course until we find the user
- *  2. Check their roles array for teacher role IDs
- *  3. Also check role shortnames as fallback (editingteacher, teacher, manager)
+ *  - Scan ALL courses (up to 10 for performance)
+ *  - For each course, check if user is teacher or student
+ *  - If both roles found across courses → isDualRole = true
  */
 export async function detectUserRole(token, userId, courses) {
-  if (!courses || courses.length === 0) return "student";
+  if (!courses || courses.length === 0) {
+    return {
+      roles: ["student"],
+      isDualRole: false,
+      defaultRole: "student",
+      teacherCourses: [],
+      studentCourses: [],
+    };
+  }
 
-  // Check up to 3 courses to find user's role (usually first one is enough)
-  for (const course of courses.slice(0, 3)) {
+  const teacherCourses = [];
+  const studentCourses = [];
+
+  // Scan up to 10 courses for performance
+  for (const course of courses.slice(0, 10)) {
     try {
       const enrolled = await getEnrolledUsers(token, course.id);
       if (!enrolled || !Array.isArray(enrolled)) continue;
@@ -434,23 +454,44 @@ export async function detectUserRole(token, userId, courses) {
       const me = enrolled.find(u => u.id === userId);
       if (!me || !me.roles) continue;
 
-      const isTeacher = me.roles.some(r =>
+      const isTeacherHere = me.roles.some(r =>
         TEACHER_ROLE_IDS.includes(r.roleid) ||
-        ["editingteacher", "teacher", "manager", "coursecreator"].includes(r.shortname)
+        TEACHER_SHORTNAMES.includes(r.shortname)
       );
 
-      if (isTeacher) return "teacher";
+      if (isTeacherHere) {
+        teacherCourses.push({ id: course.id, fullname: course.fullname });
+      } else {
+        studentCourses.push({ id: course.id, fullname: course.fullname });
+      }
 
-      // Found user but they're a student in this course
-      return "student";
+      // Early exit: if we already found both roles, no need to keep scanning
+      if (teacherCourses.length > 0 && studentCourses.length > 0) break;
     } catch (err) {
       console.warn(`Role detection failed for course ${course.id}:`, err.message);
       continue;
     }
   }
 
-  // Default to student if we couldn't determine
-  return "student";
+  const hasTeacher = teacherCourses.length > 0;
+  const hasStudent = studentCourses.length > 0;
+  const isDualRole = hasTeacher && hasStudent;
+
+  const roles = [];
+  if (hasTeacher) roles.push("teacher");
+  if (hasStudent) roles.push("student");
+  if (roles.length === 0) roles.push("student");
+
+  // Default: if dual role, start as teacher (can switch)
+  const defaultRole = hasTeacher ? "teacher" : "student";
+
+  return {
+    roles,
+    isDualRole,
+    defaultRole,
+    teacherCourses,
+    studentCourses,
+  };
 }
 
 /**
